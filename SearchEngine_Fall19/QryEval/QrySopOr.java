@@ -1,5 +1,5 @@
 /**
- *  Copyright (c) 2019, Carnegie Mellon University.  All Rights Reserved.
+ * Copyright (c) 2019, Carnegie Mellon University.  All Rights Reserved.
  */
 
 import java.io.*;
@@ -9,48 +9,67 @@ import java.io.*;
  */
 public class QrySopOr extends QrySop {
 
-  /**
-   *  Indicates whether the query has a match.
-   *  @param r The retrieval model that determines what is a match
-   *  @return True if the query matches, otherwise false.
-   */
-  public boolean docIteratorHasMatch (RetrievalModel r) {
-    return this.docIteratorHasMatchMin (r);
-  }
-
-  /**
-   *  Get a score for the document that docIteratorHasMatch matched.
-   *  @param r The retrieval model that determines how scores are calculated.
-   *  @return The document score.
-   *  @throws IOException Error accessing the Lucene index
-   */
-  public double getScore (RetrievalModel r) throws IOException {
-
-    if (r instanceof RetrievalModelUnrankedBoolean) {
-      return this.getScoreUnrankedBoolean (r);
+    /**
+     *  Indicates whether the query has a match.
+     *  @param r The retrieval model that determines what is a match
+     *  @return True if the query matches, otherwise false.
+     */
+    public boolean docIteratorHasMatch(RetrievalModel r) {
+        return this.docIteratorHasMatchMin(r);
     }
 
-    //  STUDENTS::
-    //  Add support for other retrieval models here.
+    /**
+     *  Get a score for the document that docIteratorHasMatch matched.
+     *  @param r The retrieval model that determines how scores are calculated.
+     *  @return The document score.
+     *  @throws IOException Error accessing the Lucene index
+     */
+    public double getScore(RetrievalModel r) throws IOException {
 
-    else {
-      throw new IllegalArgumentException
-        (r.getClass().getName() + " doesn't support the OR operator.");
-    }
-  }
-  
-  /**
-   *  getScore for the UnrankedBoolean retrieval model.
-   *  @param r The retrieval model that determines how scores are calculated.
-   *  @return The document score.
-   *  @throws IOException Error accessing the Lucene index
-   */
-  private double getScoreUnrankedBoolean (RetrievalModel r) throws IOException {
-    if (! this.docIteratorHasMatchCache()) {
-      return 0.0;
-    } else {
-      return 1.0;
-    }
-  }
+        if (r instanceof RetrievalModelUnrankedBoolean) {
+            return this.getScoreUnrankedBoolean(r);
+        }
 
+        //  STUDENTS::
+        //  Add support for other retrieval models here.
+
+        else if (r instanceof RetrievalModelRankedBoolean) {
+          return this.getScoreRankedBoolean(r);
+      }
+
+        else {
+            throw new IllegalArgumentException
+                    (r.getClass().getName() + " doesn't support the OR operator.");
+        }
+    }
+
+    /**
+     *  getScore for the UnrankedBoolean retrieval model.
+     *  @param r The retrieval model that determines how scores are calculated.
+     *  @return The document score.
+     *  @throws IOException Error accessing the Lucene index
+     */
+    private double getScoreUnrankedBoolean(RetrievalModel r) throws IOException {
+        if (!this.docIteratorHasMatchCache()) {
+            return 0.0;
+        } else {
+            return 1.0;
+        }
+    }
+
+    //todo to-check
+    private double getScoreRankedBoolean(RetrievalModel r) throws IOException {
+        if (!this.docIteratorHasMatchCache()) {
+            return 0.0;
+        } else {
+            int doc_id = this.docIteratorGetMatch();
+            double score = 0.0;
+            for(Qry q_i : this.args){
+                if (q_i.docIteratorGetMatch() == doc_id) {
+                    score = Math.max(score, ((QrySopScore) q_i).getScore(r)); // todo need add getScore() in Qry?
+                }
+            }
+            return score;//todo  return score for ranked boolean - check inverted list
+        }
+    }
 }

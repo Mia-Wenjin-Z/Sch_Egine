@@ -89,18 +89,11 @@ public class ScoreList {
     @Override
     public int compare(ScoreListEntry s1, ScoreListEntry s2) {
       if (s1.score > s2.score)
-	return -1;
+        return -1;
+      else if (s1.score < s2.score)
+        return 1;
       else
-	if (s1.score < s2.score)
-	  return 1;
-	else
-	  if (s1.docid > s2.docid)
-	    return 1;
-	  else
-	    if (s1.docid < s2.docid)
-	      return -1;
-	    else
-	      return 0;
+        return s1.externalId.compareTo(s2.externalId);
     }
   }
 
@@ -122,4 +115,6 @@ public class ScoreList {
     this.scores.clear();
     this.scores = truncated;
   }
+
+
 }

@@ -5,24 +5,26 @@
 import java.io.*;
 
 /**
- *  The OR operator for all retrieval models.
+ * The OR operator for all retrieval models.
  */
 public class QrySopOr extends QrySop {
 
     /**
-     *  Indicates whether the query has a match.
-     *  @param r The retrieval model that determines what is a match
-     *  @return True if the query matches, otherwise false.
+     * Indicates whether the query has a match.
+     *
+     * @param r The retrieval model that determines what is a match
+     * @return True if the query matches, otherwise false.
      */
     public boolean docIteratorHasMatch(RetrievalModel r) {
         return this.docIteratorHasMatchMin(r);
     }
 
     /**
-     *  Get a score for the document that docIteratorHasMatch matched.
-     *  @param r The retrieval model that determines how scores are calculated.
-     *  @return The document score.
-     *  @throws IOException Error accessing the Lucene index
+     * Get a score for the document that docIteratorHasMatch matched.
+     *
+     * @param r The retrieval model that determines how scores are calculated.
+     * @return The document score.
+     * @throws IOException Error accessing the Lucene index
      */
     public double getScore(RetrievalModel r) throws IOException {
 
@@ -34,20 +36,19 @@ public class QrySopOr extends QrySop {
         //  Add support for other retrieval models here.
 
         else if (r instanceof RetrievalModelRankedBoolean) {
-          return this.getScoreRankedBoolean(r);
-      }
-
-        else {
+            return this.getScoreRankedBoolean(r);
+        } else {
             throw new IllegalArgumentException
                     (r.getClass().getName() + " doesn't support the OR operator.");
         }
     }
 
     /**
-     *  getScore for the UnrankedBoolean retrieval model.
-     *  @param r The retrieval model that determines how scores are calculated.
-     *  @return The document score.
-     *  @throws IOException Error accessing the Lucene index
+     * getScore for the UnrankedBoolean retrieval model.
+     *
+     * @param r The retrieval model that determines how scores are calculated.
+     * @return The document score.
+     * @throws IOException Error accessing the Lucene index
      */
     private double getScoreUnrankedBoolean(RetrievalModel r) throws IOException {
         if (!this.docIteratorHasMatchCache()) {
@@ -64,7 +65,7 @@ public class QrySopOr extends QrySop {
             int doc_id = this.docIteratorGetMatch();
             double score = 0.0;
 
-            for(Qry q_i : this.args){
+            for (Qry q_i : this.args) {
                 if (q_i.docIteratorHasMatchCache() && q_i.docIteratorGetMatch() == doc_id) {
                     score = Math.max(score, ((QrySop) q_i).getScore(r));
                 }

@@ -1,16 +1,16 @@
 import java.io.IOException;
 
 /**
- *
- *  The AND operator for all retrieval models.
+ * The AND operator for all retrieval models.
  */
 
 public class QrySopAnd extends QrySop {
 
     /**
-     *  Indicates whether the query has a match.
-     *  @param r The retrieval model that determines what is a match
-     *  @return True if the query matches, otherwise false.
+     * Indicates whether the query has a match.
+     *
+     * @param r The retrieval model that determines what is a match
+     * @return True if the query matches, otherwise false.
      */
     @Override
     public boolean docIteratorHasMatch(RetrievalModel r) {
@@ -18,12 +18,12 @@ public class QrySopAnd extends QrySop {
     }
 
 
-
     /**
-     *  Get a score for the document that docIteratorHasMatch matched.
-     *  @param r The retrieval model that determines how scores are calculated.
-     *  @return The document score.
-     *  @throws IOException Error accessing the Lucene index
+     * Get a score for the document that docIteratorHasMatch matched.
+     *
+     * @param r The retrieval model that determines how scores are calculated.
+     * @return The document score.
+     * @throws IOException Error accessing the Lucene index
      */
     @Override
     public double getScore(RetrievalModel r) throws IOException {
@@ -37,9 +37,7 @@ public class QrySopAnd extends QrySop {
 
         else if (r instanceof RetrievalModelRankedBoolean) {
             return this.getScoreRankedBoolean(r);
-        }
-
-        else {
+        } else {
             throw new IllegalArgumentException
                     (r.getClass().getName() + " doesn't support the AND operator.");
         }
@@ -62,7 +60,7 @@ public class QrySopAnd extends QrySop {
             double score = Integer.MAX_VALUE;
             for (Qry q_i : this.args) {
                 if (q_i.docIteratorHasMatchCache() && q_i.docIteratorGetMatch() == doc_id) {
-                    score = Math.min(score, ((QrySop)q_i).getScore(r));
+                    score = Math.min(score, ((QrySop) q_i).getScore(r));
                 } else {
                     return 0.0;//to-delete: bug fixed
                 }

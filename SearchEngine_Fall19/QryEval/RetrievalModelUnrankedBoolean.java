@@ -1,5 +1,5 @@
 /**
- *  Copyright (c) 2019, Carnegie Mellon University.  All Rights Reserved.
+ * Copyright (c) 2019, Carnegie Mellon University.  All Rights Reserved.
  */
 
 /**
@@ -9,8 +9,8 @@
  */
 public class RetrievalModelUnrankedBoolean extends RetrievalModel {
 
-  public String defaultQrySopName () {
-    return new String ("#or");
-  }
+    public String defaultQrySopName() {
+        return new String("#or");
+    }
 
 }

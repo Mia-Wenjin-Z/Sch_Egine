@@ -39,6 +39,10 @@ public class QrySopScore extends QrySop {
     //  STUDENTS::
     //  Add support for other retrieval models here.
 
+    if (r instanceof RetrievalModelRankedBoolean) {
+      return this.getScoreRankedBoolean(r);
+    }
+
     else {
       throw new IllegalArgumentException
         (r.getClass().getName() + " doesn't support the SCORE operator.");
@@ -58,6 +62,22 @@ public class QrySopScore extends QrySop {
       return 1.0;
     }
   }
+
+  /**
+   *  getScore for the Ranked retrieval model.
+   *  @param r The retrieval model that determines how scores are calculated.
+   *  @return The document score.
+   *  @throws IOException Error accessing the Lucene index
+   */
+  public double getScoreRankedBoolean (RetrievalModel r) throws IOException {
+    if (! this.docIteratorHasMatchCache()) {
+      return 0.0;
+    } else {
+      return this.getArg(0).docIteratorGetMatchPosting().tf;
+    }
+  }
+
+
 
   /**
    *  Initialize the query operator (and its arguments), including any

@@ -1,7 +1,7 @@
 /*
  *  Copyright (c) 2019, Carnegie Mellon University.  All Rights Reserved.
  *  Version 3.4.
- *  
+ *
  *  Compatible with Lucene 8.1.1.
  */
 import java.io.*;
@@ -35,7 +35,7 @@ public class QryEval {
     //  This is a timer that you may find useful.  It is used here to
     //  time how long the entire program takes, but you can move it
     //  around to time specific parts of your code.
-    
+
     Timer timer = new Timer();
     timer.start ();
 
@@ -56,11 +56,11 @@ public class QryEval {
     RetrievalModel model = initializeRetrievalModel (parameters);
 
     //  Perform experiments.
-    
-    processQueryFile(parameters.get("queryFilePath"), model);
+
+    processQueryFile(parameters, model);
 
     //  Clean up.
-    
+
     timer.stop ();
     System.out.println ("Time:  " + timer);
   }
@@ -88,14 +88,20 @@ public class QryEval {
     }
 
     //  STUDENTS::  Add new retrieval models here.
-    
+    else if(modelString.equals("rankedboolean")) {
+
+      model = new RetrievalModelRankedBoolean();
+      //  this retrieval model had parameters, they would be
+      //  initialized here.
+
+    }
 
     else {
 
       throw new IllegalArgumentException
         ("Unknown retrieval model " + parameters.get("retrievalAlgorithm"));
     }
-      
+
     return model;
   }
 
@@ -103,8 +109,8 @@ public class QryEval {
    * Print a message indicating the amount of memory used. The caller can
    * indicate whether garbage collection should be performed, which slows the
    * program but reduces memory usage.
-   * 
-   * @param gc 
+   *
+   * @param gc
    *          If true, run the garbage collector before reporting.
    */
   public static void printMemoryUsage(boolean gc) {
@@ -133,16 +139,16 @@ public class QryEval {
     Qry q = QryParser.getQuery (qryString);
 
     // Show the query that is evaluated
-    
+
     System.out.println("    --> " + q);
-    
+
     if (q != null) {
 
       ScoreList results = new ScoreList ();
-      
+
       if (q.args.size () > 0) {		// Ignore empty queries
 
-        q.initialize (model);
+        q.initialize (model);// get inverted list info
 
         while (q.docIteratorHasMatch (model)) {
           int docid = q.docIteratorGetMatch ();
@@ -151,7 +157,7 @@ public class QryEval {
           q.docIteratorAdvancePast (docid);
         }
       }
-
+      results.sort();
       return results;
     } else
       return null;
@@ -159,20 +165,24 @@ public class QryEval {
 
   /**
    *  Process the query file.
-   *  @param queryFilePath Path to the query file
+   *  @param
    *  @param model A retrieval model that will guide matching and scoring
    *  @throws IOException Error accessing the Lucene index.
    */
-  static void processQueryFile(String queryFilePath,
+  static void processQueryFile(Map<String, String> parameters,
                                RetrievalModel model)
       throws IOException {
 
     BufferedReader input = null;
+    BufferedWriter output = null;
 
+    String queryFilePath = parameters.get("queryFilePath");
+    String trecEvalOutputPath = parameters.get("trecEvalOutputPath");
     try {
       String qLine = null;
 
       input = new BufferedReader(new FileReader(queryFilePath));
+      output = new BufferedWriter(new FileWriter(trecEvalOutputPath));
 
       //  Each pass of the loop processes one query.
 
@@ -190,9 +200,11 @@ public class QryEval {
 	String qid = pair[0];
 	String query = pair[1];
         ScoreList results = processQuery(query, model);
+        StringBuilder outputStr = formatResults(qid, results, parameters);
+        output.write(outputStr.toString());
 
         if (results != null) {
-          printResults(qid, results);
+          printResults(qid, outputStr);
           System.out.println();
         }
       }
@@ -200,35 +212,62 @@ public class QryEval {
       ex.printStackTrace();
     } finally {
       input.close();
+      output.close();
     }
   }
 
   /**
    * Print the query results.
-   * 
-   * STUDENTS:: 
+   *
+   * STUDENTS::
    * This is not the correct output format. You must change this method so
    * that it outputs in the format specified in the homework page, which is:
-   * 
+   *
    * QueryID Q0 DocID Rank Score RunID
-   * 
+   *
    * @param queryName
    *          Original query.
-   * @param result
+   * @param outputStr
    *          A list of document ids and scores
    * @throws IOException Error accessing the Lucene index.
    */
-  static void printResults(String queryName, ScoreList result) throws IOException {
+  static void printResults(String queryName, StringBuilder outputStr) throws IOException {
 
     System.out.println(queryName + ":  ");
-    if (result.size() < 1) {
+    if (outputStr.length() < 1) {
       System.out.println("\tNo results.");
     } else {
-      for (int i = 0; i < result.size(); i++) {
-        System.out.println("\t" + i + ":  " + Idx.getExternalDocid(result.getDocid(i)) + ", "
-            + result.getDocidScore(i));
+        System.out.print(outputStr);
+      }
+  }
+
+  private static StringBuilder formatResults(String queryName, ScoreList results, Map<String, String> parameters) throws IOException {
+    StringBuilder outputStr = new StringBuilder();
+    if (results.size() < 1) {
+      System.out.println("\tNo results.");
+    } else {
+      Integer outputLength = getOutputLength(results, parameters);
+      for (int i = 0; i < outputLength; i++) {
+        Formatter fmt = new Formatter(outputStr);
+        fmt.format("%s\t", queryName);
+        fmt.format("%s\t", "Q0");
+        fmt.format("%s\t", Idx.getExternalDocid(results.getDocid(i)));
+        fmt.format("%d\t", i + 1);
+        fmt.format("%.2f\t", results.getDocidScore(i));
+        fmt.format("%s\n", "BeHappy");
       }
     }
+    return outputStr;
+  }
+
+  private static Integer getOutputLength(ScoreList results, Map<String, String> parameters) {
+    Integer outputLength = results.size();
+
+    if (parameters.containsKey("trecEvalOutputLength")) {
+      String trecEvalOutputLength = parameters.get("trecEvalOutputLength");
+      outputLength = Math.min(outputLength, Integer.parseInt(trecEvalOutputLength));
+    }
+    return outputLength;
   }
 
   /**
@@ -276,7 +315,14 @@ public class QryEval {
         ("Required parameters were missing from the parameter file.");
     }
 
+    if (parameters.containsKey("trecEvalOutputLength")) {
+      String trecOutputPath = parameters.get("trecEvalOutputLength");
+      try {
+        Integer.parseInt(trecOutputPath);
+      } catch (NumberFormatException e) {
+        throw new NumberFormatException ("Illegal trecEvalOutputLength: not integer");
+      }
+    }
     return parameters;
   }
-
 }

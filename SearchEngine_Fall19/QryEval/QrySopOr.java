@@ -57,19 +57,20 @@ public class QrySopOr extends QrySop {
         }
     }
 
-    //todo to-check
     private double getScoreRankedBoolean(RetrievalModel r) throws IOException {
         if (!this.docIteratorHasMatchCache()) {
             return 0.0;
         } else {
             int doc_id = this.docIteratorGetMatch();
+//            System.out.println("doc_id is: " + doc_id);//to-delete
             double score = 0.0;
             for(Qry q_i : this.args){
-                if (q_i.docIteratorGetMatch() == doc_id) {
-                    score = Math.max(score, ((QrySopScore) q_i).getScore(r)); // todo need add getScore() in Qry?
+                if (q_i.docIteratorHasMatchCache() && q_i.docIteratorGetMatch() == doc_id) {
+ //                   System.out.println("q_i.docIteratorGetMatch: " + q_i.docIteratorGetMatch());//to-delete
+                    score = Math.max(score, ((QrySop) q_i).getScore(r));
                 }
             }
-            return score;//todo  return score for ranked boolean - check inverted list
+            return score;
         }
     }
 }

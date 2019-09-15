@@ -1,8 +1,8 @@
 import java.io.IOException;
 
 /**
- * todo
- *  The OR operator for all retrieval models.
+ *
+ *  The AND operator for all retrieval models.
  */
 
 public class QrySopAnd extends QrySop {
@@ -60,9 +60,11 @@ public class QrySopAnd extends QrySop {
         } else {
             int doc_id = this.docIteratorGetMatch();
             double score = Integer.MAX_VALUE;
-            for(Qry q_i : this.args){
-                if (q_i.docIteratorGetMatch() == doc_id) {
-                    score = Math.min(score, ((QrySopScore) q_i).getScore(r)); // todo need add getScore() in Qry?
+            for (Qry q_i : this.args) {
+                if (q_i.docIteratorHasMatchCache() && q_i.docIteratorGetMatch() == doc_id) {
+                    score = Math.min(score, ((QrySop)q_i).getScore(r));
+                } else {
+                    return 0.0;//to-delete: bug fixed
                 }
             }
             return score;

@@ -55,8 +55,10 @@ public class QryIopNear extends QryIop{
 
 
             // Set the location vector
+  //          System.out.println("max doc id:" + maxDocid);
             if (!setLocationVector(locationVector, maxDocid)) {
                 // no matching at all, consider next doc
+                docIteratorAdvanceAll(maxDocid);
                 continue;
             }
             // loop within a doc to find all matching term loc index
@@ -93,17 +95,25 @@ public class QryIopNear extends QryIop{
                     }
                 }
             }
-            if(positions.size()>0){
-                this.invertedList.appendPosting(maxDocid, positions);
 
-                //to-delete
-//                System.out.print("Append posting: docid: " + maxDocid + positions);
-//                System.out.println();
-//                System.out.println();
-
-            }
+            appendPosting(maxDocid, positions);
+//            if(positions.size()>0){
+//                this.invertedList.appendPosting(maxDocid, positions);
+//
+//                //to-delete
+////                System.out.print("Append posting: docid: " + maxDocid + positions);
+////                System.out.println();
+////                System.out.println();
+//
+//            }
             docIteratorAdvanceAll(maxDocid);
         }
+    }
+
+    // append matched near/n doc and loc information to invertedlist
+    private void appendPosting(int maxDocid, List<Integer> positions){
+        if(positions.size()>0){
+            this.invertedList.appendPosting(maxDocid, positions);}
     }
 
     //  Find the next document id that contains all query terms. If there is none, we're done.
@@ -141,7 +151,7 @@ public class QryIopNear extends QryIop{
                 maxDocid = Qry.INVALID_DOCID;
                 break;
             } else {
-                commonPosition.clear();
+                commonPosition.clear();// does not reach to the common doc id
                 commonPosition.add(maxDocid);
             }
         }
@@ -176,7 +186,7 @@ public class QryIopNear extends QryIop{
             if (((QryIop) q_i).locIteratorHasMatch()) {
                 int location = ((QryIop) q_i).locIteratorGetMatch();
 
-                if (locationVector.size() > i + 1) {
+                if (locationVector.size() >  Math.max(0, i - 1)) {
                     int prevLocation = locationVector.get(locationVector.size() - 1);
 
                     //ensure current location index > prev location index
@@ -190,17 +200,16 @@ public class QryIopNear extends QryIop{
                           return false;
                       }
                     }
-                    locationVector.set(i, location);
+                   // locationVector.set(i, location);//update current location
                 }
-                else{
-                    locationVector.add(location);
-                }
+                locationVector.add(location);// initial set of locationVector, directly add
             } else {
                 locationVector.clear();
                 return false;
             }
         }
 //        }
+ //       System.out.println("finish set location vector: " + locationVector);//to-delete
         return true;
     }
 
@@ -220,12 +229,13 @@ public class QryIopNear extends QryIop{
         int prevLocation = locationVector.get(0);
         for (int i = 0; i < locationVector.size() - 1; i++) {
             int currLocation = locationVector.get(i + 1);
-            if ((currLocation - prevLocation > n) ||
-                    (currLocation - prevLocation <= 0) ) {// why is this necessary?
+            if ((currLocation - prevLocation > n) ) {
+//                   || (currLocation - prevLocation <= 0) ) {// why is this necessary? - updateLocVector
                 return false;
             }
             prevLocation = currLocation;
         }
+ //       System.out.println("satisfy match loc vector: " + locationVector);//to-delete
         return true;
     }
 
@@ -246,6 +256,7 @@ public class QryIopNear extends QryIop{
     // recursively update(if needed) loc iterator and location vector after left-most iterator advances
     private boolean updateHelper(List<Integer> locationVector, int left) {
         if (left == locationVector.size() - 1) {
+            //System.out.println("finish updateLoc vector:" + locationVector);//to-delete
             return true;
         }
         int prevLocation = locationVector.get(left);
@@ -263,6 +274,7 @@ public class QryIopNear extends QryIop{
                 return false;
             }
         } else {
+            //System.out.println("finish updateLoc vector:" + locationVector);//to-delete
             return true;
         }
     }

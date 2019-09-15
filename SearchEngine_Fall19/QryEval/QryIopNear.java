@@ -2,16 +2,19 @@ import java.io.IOException;
 import java.util.*;
 
 /**
- * TODO
+ *
  * The NEAR operator for all retrieval models.
  */
 
-public class QryIopNear extends QryIop {
+public class QryIopNear extends QryIop{
 
     private int n; // the parameter parsed from #near/n
 
     public QryIopNear(int n) {
         this.n = n;
+        if(n == 0){
+            throw new IllegalArgumentException("Illegal /n in #near/n operator");
+        }
     }
 
 
@@ -33,6 +36,9 @@ public class QryIopNear extends QryIop {
         while (true) {
 
             int maxDocid = findDocid();
+
+            //to-delete
+            //System.out.println("the max doc id is: " + maxDocid);
 
             // All docids have been processed.  Done.
             if (maxDocid == Qry.INVALID_DOCID) {
@@ -57,6 +63,14 @@ public class QryIopNear extends QryIop {
             while (true) {
 
                 if (satisfyMatch(locationVector, n)) {
+
+                    // to-delete
+//                    System.out.println("found a match in doc: " + maxDocid + " location index: ");
+//                    for(int i : locationVector){
+//                        System.out.print( i + ", ");
+//                    }
+//                    System.out.println();
+
                     positions.add(locationVector.get(locationVector.size() - 1));
                     locationVector.clear();
                     locIteratorAdvanceAll();
@@ -79,7 +93,16 @@ public class QryIopNear extends QryIop {
                     }
                 }
             }
-            this.invertedList.appendPosting(maxDocid, positions);
+            if(positions.size()>0){
+                this.invertedList.appendPosting(maxDocid, positions);
+
+                //to-delete
+//                System.out.print("Append posting: docid: " + maxDocid + positions);
+//                System.out.println();
+//                System.out.println();
+
+            }
+            docIteratorAdvanceAll(maxDocid);
         }
     }
 
@@ -91,7 +114,7 @@ public class QryIopNear extends QryIop {
 
         while (true) {
 
-            for (Qry q_i : this.args) {// to-delete 调用的是QryIop的hasMatch
+            for (Qry q_i : this.args) {
 
                 if (q_i.docIteratorHasMatch(null)) {
                     int q_iDocid = q_i.docIteratorGetMatch();
@@ -102,19 +125,44 @@ public class QryIopNear extends QryIop {
                         commonPosition.add(maxDocid);
                     } else {
                         q_i.docIteratorAdvanceTo(maxDocid);
+                        maxDocid = updateMaxDocid(q_i, maxDocid);
+                        commonPosition.add(maxDocid);
                     }
+
+                }
+                else{// the current q_i's documents are exhausted. docids have been processed.  Done.
+                    maxDocid = Qry.INVALID_DOCID;
+                    break;
                 }
             }
             if (commonPosition.size() == 1) {// reach to the common doc id
                 break;
             } else if (commonPosition.size() == 0) {// All docids have been processed.  Done.
+                maxDocid = Qry.INVALID_DOCID;
                 break;
             } else {
                 commonPosition.clear();
+                commonPosition.add(maxDocid);
             }
         }
         return maxDocid;
     }
+
+    private int updateMaxDocid(Qry q_i,int maxDocid ){
+        if (q_i.docIteratorHasMatch(null)) {
+            int q_iDocid = q_i.docIteratorGetMatch();
+            if ((maxDocid < q_iDocid) ||
+                    (maxDocid == Qry.INVALID_DOCID)) {
+                maxDocid = q_iDocid;
+            }
+        }else{
+            maxDocid = Qry.INVALID_DOCID;// the current q_i's documents are exhausted. done
+        }
+        return maxDocid;
+    }
+
+
+
     // get the legal (i.e. index of term i < index of term i + 1) location vector
     // returns true if loc iterator has not been exhausted
 
@@ -124,21 +172,29 @@ public class QryIopNear extends QryIop {
 
 //            if (q_i.docIteratorHasMatch(null) &&
 //                    (q_i.docIteratorGetMatch() == maxDocid)) {
-
+//            System.out.println(q_i.getDisplayName());//to-delete
             if (((QryIop) q_i).locIteratorHasMatch()) {
                 int location = ((QryIop) q_i).locIteratorGetMatch();
 
-                if (locationVector.size() > 0) {
+                if (locationVector.size() > i + 1) {
                     int prevLocation = locationVector.get(locationVector.size() - 1);
 
                     //ensure current location index > prev location index
-
                     if (prevLocation > location) {
                         ((QryIop) q_i).locIteratorAdvancePast(prevLocation);
-                        location = ((QryIop) q_i).locIteratorGetMatch();
+                      if(((QryIop) q_i).locIteratorHasMatch()){
+                          location = ((QryIop) q_i).locIteratorGetMatch();
+                      }
+                      else{
+                          locationVector.clear();
+                          return false;
+                      }
                     }
+                    locationVector.set(i, location);
                 }
-                locationVector.set(i, location);
+                else{
+                    locationVector.add(location);
+                }
             } else {
                 locationVector.clear();
                 return false;
@@ -147,6 +203,8 @@ public class QryIopNear extends QryIop {
 //        }
         return true;
     }
+
+
 
 
     // advance all locationIterator
@@ -162,7 +220,8 @@ public class QryIopNear extends QryIop {
         int prevLocation = locationVector.get(0);
         for (int i = 0; i < locationVector.size() - 1; i++) {
             int currLocation = locationVector.get(i + 1);
-            if (currLocation - prevLocation > n) {
+            if ((currLocation - prevLocation > n) ||
+                    (currLocation - prevLocation <= 0) ) {// why is this necessary?
                 return false;
             }
             prevLocation = currLocation;
@@ -186,7 +245,7 @@ public class QryIopNear extends QryIop {
 
     // recursively update(if needed) loc iterator and location vector after left-most iterator advances
     private boolean updateHelper(List<Integer> locationVector, int left) {
-        if (left == locationVector.size()) {
+        if (left == locationVector.size() - 1) {
             return true;
         }
         int prevLocation = locationVector.get(left);
@@ -208,4 +267,9 @@ public class QryIopNear extends QryIop {
         }
     }
 
+    private void docIteratorAdvanceAll(int maxDocid){
+        for(Qry q_i: this.args) {
+            q_i.docIteratorAdvancePast(maxDocid);
+        }
+    }
 }

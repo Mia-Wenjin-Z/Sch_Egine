@@ -73,7 +73,7 @@ public abstract class QryIop extends Qry {
     while ((this.docIteratorIndex < this.invertedList.df) &&
            (this.invertedList.getDocid (this.docIteratorIndex) <= docid)) {
       this.docIteratorIndex ++;
-    }
+    }// docIteratorIndex is the index for collections with size of intertedList.df, each maps a doc id
            
     this.locIteratorIndex = 0;
   }

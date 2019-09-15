@@ -62,11 +62,10 @@ public class QrySopOr extends QrySop {
             return 0.0;
         } else {
             int doc_id = this.docIteratorGetMatch();
-//            System.out.println("doc_id is: " + doc_id);//to-delete
             double score = 0.0;
+
             for(Qry q_i : this.args){
                 if (q_i.docIteratorHasMatchCache() && q_i.docIteratorGetMatch() == doc_id) {
- //                   System.out.println("q_i.docIteratorGetMatch: " + q_i.docIteratorGetMatch());//to-delete
                     score = Math.max(score, ((QrySop) q_i).getScore(r));
                 }
             }

@@ -96,6 +96,7 @@ public class QryIopNear extends QryIop{
     }
 
     //  Find the next document id that contains all query terms. If there is none, we're done.
+    // todo this method is very lengthy and needs future refinement
 
     private int findDocid() {
 

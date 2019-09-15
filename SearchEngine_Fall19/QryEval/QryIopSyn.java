@@ -46,7 +46,7 @@ public class QryIopSyn extends QryIop {
       }
 
       if (minDocid == Qry.INVALID_DOCID)
-        break;				// All docids have been processed.  Done.
+        break;				// to-delete WHY? All docids have been processed.  Done.
       
       //  Create a new posting that is the union of the posting lists
       //  that match the minDocid.  Save it.

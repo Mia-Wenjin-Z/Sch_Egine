@@ -11,7 +11,7 @@ import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 
 /**
  *  QryParser is an embarrassingly simplistic query parser.  It has
- *  two primary methods:  getQuery and tokenizeString.  getQuery
+ *  two primary methods:  get Query and tokenizeString.  getQuery
  *  converts a query string into an optimized Qry tree.  tokenizeString
  *  converts a flat (unstructured) query string into a string array; it
  *  is used for creating learning-to-rank feature vectors.
@@ -80,17 +80,26 @@ public class QryParser {
     Qry operator=null;
     int operatorDistance=0;
     String operatorNameLowerCase = (new String (operatorName)).toLowerCase();
+    int n = 0; // for #near/n or #window/n
 
-    //  STUDENTS:: 
+    //  STUDENTS::
     //  Remove the distance argument from proximity operators such as
     //  #near/n and #window/n before trying to create the operator.
-
+    if (operatorName.contains("/")){
+      String [] result = operatorName.split("/", 2);
+      operatorNameLowerCase = result[0].toLowerCase();
+      n = Integer.parseInt( result[1]);
+    }
     //  Create the query operator.
 
     switch (operatorNameLowerCase) {
       case "#or":
-	operator = new QrySopOr ();
+        operator = new QrySopOr ();
 	break;
+
+      case "#and":
+        operator = new QrySopAnd();
+        break;
 
       case "#syn":
 	operator = new QryIopSyn ();
@@ -98,6 +107,9 @@ public class QryParser {
 
       //  STUDENTS:: 
       //  Add new query operators here.
+      case "#near":
+        operator = new QryIopNear(n);
+        break;
 
       default:
 	syntaxError ("Unknown query operator " + operatorName);
@@ -283,8 +295,8 @@ public class QryParser {
 
     //  Find the left-most query operator and start the query tree.
 
-    String[] substrings = queryString.split("[(]", 2);
-    Qry queryTree = createOperator (substrings[0].trim());
+    String[] substrings = queryString.split("[(]", 2);//split #operater and (subquery)
+    Qry queryTree = createOperator (substrings[0].trim());//eg. queryTree.displayName = "#or"
 
     //  Start consuming queryString by removing the query operator and
     //  its terminating ')'.  queryString is always the part of the
@@ -292,7 +304,7 @@ public class QryParser {
     
     queryString = substrings[1];
     queryString =
-      queryString.substring (0, queryString.lastIndexOf(")")).trim();
+      queryString.substring (0, queryString.lastIndexOf(")")).trim();// remove ")"
     
     //  Each pass below handles one argument to the query operator.
     //  Note: An argument can be a token that produces multiple terms

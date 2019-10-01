@@ -244,4 +244,6 @@ public abstract class QryIop extends Qry {
                 this.invertedList.getTf(this.docIteratorIndex));
     }
 
+
+
 }

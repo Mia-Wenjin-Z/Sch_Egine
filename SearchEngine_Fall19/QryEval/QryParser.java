@@ -102,7 +102,15 @@ public class QryParser {
             case "#and":
                 operator = new QrySopAnd();
                 break;
-
+            case "#wand":
+                operator = new QrySopWand();//todo
+                break;
+            case "#sum":
+                operator = new QrySopSum();
+                break;
+            case "#wsum":
+                operator = new QrySopWsum();//todo
+                break;
             case "#syn":
                 operator = new QryIopSyn();
                 break;
@@ -112,7 +120,9 @@ public class QryParser {
             case "#near":
                 operator = new QryIopNear(n);
                 break;
-
+            case "#window":
+                operator = new QryIopWindow(n);
+                break;
             default:
                 syntaxError("Unknown query operator " + operatorName);
         }
@@ -279,6 +289,9 @@ public class QryParser {
      * @return Qry The query tree for the parsed query.
      * @throws IOException              Error accessing the Lucene index.
      * @throws IllegalArgumentException Query syntax error.
+     *                                  NOTE: if stopword (which will not be included in Query Tree) has a weight,
+     *                                  this weight will also be appended to weight vector and cause future error
+     *                                  eg. 0.2 the 0.8 apple -> weight-> (0.2, 0.8) term-> (apple) mismatch
      */
     private static Qry parseString(String queryString)
             throws IOException, IllegalArgumentException {
@@ -328,26 +341,43 @@ public class QryParser {
             //  Now handle the argument (which could be a subquery).
 
             Qry[] qargs = null;
-            PopData<String, String> p;
+             PopData<String, String> p;
+            double weight = 0;
+            boolean weightExist = false;
+            boolean appendArg = true;
 
             if (queryString.charAt(0) == '#') {    // Subquery
                 p = popSubquery(queryString);
                 qargs = new Qry[1];
                 qargs[0] = parseString(p.getPopped());
+            } else if ((queryTree instanceof QrySopW) && Character.isDigit(queryString.charAt(0))) {
+                //weight = popWeight(queryString);//todo
+                p = popTerm(queryString);
+                weight = Double.parseDouble(p.getPopped());
+                weightExist = true;
+                appendArg = false;
+
             } else {                    // Term
                 p = popTerm(queryString);
                 qargs = createTerms(p.getPopped());
+                //appendArg = true;
             }
 
             queryString = p.getRemaining().trim();    // Consume the arg
 
             //  Add the argument(s) to the query tree.
 
-            for (int i = 0; i < qargs.length; i++) {
+            if (weightExist) {
+                ((QrySopW) queryTree).appendWeight(weight);
+            }
 
-                //  STUDENTS WILL NEED TO ADJUST THIS BLOCK TO HANDLE WEIGHTS IN HW2
+            if (appendArg) {
+                for (int i = 0; i < qargs.length; i++) {
 
-                queryTree.appendArg(qargs[i]);
+                    //  STUDENTS WILL NEED TO ADJUST THIS BLOCK TO HANDLE WEIGHTS IN HW2
+                    // todo add weight
+                    queryTree.appendArg(qargs[i]);
+                }
             }
         }
 
@@ -416,6 +446,7 @@ public class QryParser {
 
 
     /**
+     * todo what if stopword has weight?
      * Given part of a query string, returns an array of terms with
      * stopwords removed and the terms stemmed using the Krovetz
      * stemmer.  Use this method to process raw query terms.
@@ -439,9 +470,6 @@ public class QryParser {
         }
 
         tokenStream.close();
-
         return tokens.toArray(new String[tokens.size()]);
     }
-
-
 }

@@ -177,7 +177,7 @@ public class QryIopWindow extends QryIop {
     }
 
     private boolean satisfyMatch(PriorityQueue<QryIop> locationHeap) {
-        return maxLoc - locationHeap.peek().locIteratorGetMatch() <= n;
+        return maxLoc - locationHeap.peek().locIteratorGetMatch() < n;
     }
 
     // append matched window/n doc and loc information to invertedlist

@@ -26,6 +26,15 @@ public abstract class QrySop extends Qry {
             throws IOException;
 
     /**
+     * Get a score for the document that docIteratorHasMatch does not match
+     * @param r
+     * @return
+     * @throws IOException
+     */
+    public abstract double getDefaultScore(RetrievalModel r, int doc_id)
+            throws IOException;
+
+    /**
      * Initialize the query operator (and its arguments), including any
      * internal iterators.  If the query operator is of type QryIop, it
      * is fully evaluated, and the results are stored in an internal
@@ -39,4 +48,6 @@ public abstract class QrySop extends Qry {
             q_i.initialize(r);
         }
     }
+
+
 }

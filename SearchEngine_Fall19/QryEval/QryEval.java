@@ -96,14 +96,58 @@ public class QryEval {
             //  this retrieval model had parameters, they would be
             //  initialized here.
 
+        } else if (modelString.equals(("bm25"))) {
+            String k1Str = parameters.get("BM25:k_1");
+            String k3Str = parameters.get("BM25:k_3");
+            String bStr = parameters.get("BM25:b");
+            double[] BM25Parameters = getBM25Parameters(k1Str, k3Str, bStr);
+            model = new RetrievalModelBM25(BM25Parameters[0],
+                    BM25Parameters[1], BM25Parameters[2]);
+        } else if (modelString.equals("indri")) {
+            String muStr = parameters.get("Indri:mu");
+            String lambdaStr = parameters.get("Indri:lambda");
+            try {
+                int mu = Integer.parseInt(muStr);
+                double lambda = Double.parseDouble(lambdaStr);
+                if (mu >= 0 && lambda >= 0.0 && lambda <= 1.0) {
+                    model = new RetrievalModelIndri(mu, lambda);
+                } else {
+                    throw new IllegalArgumentException("Illegal Indri parameter value!");
+                }
+            } catch (Exception e) {
+                throw new IllegalArgumentException("Illegal Indri parameters!");
+            }
         } else {
-
             throw new IllegalArgumentException
                     ("Unknown retrieval model " + parameters.get("retrievalAlgorithm"));
         }
 
         return model;
     }
+
+    /**
+     * BM25:k_1=                Values are real numbers >= 0.0.
+     * BM25:b=                    Values are real numbers between 0.0 and 1.0.
+     * BM25:k_3=                Values are real numbers >= 0.0.
+     * Indri:mu=                  Values are integers >= 0.
+     * Indri:lambda=           Values are real numbers between 0.0 and 1.0.
+     */
+
+    private static double[] getBM25Parameters(String k1Str, String bStr, String k3Str) {
+        try {
+            double k1 = Double.parseDouble(k1Str);
+            double b = Double.parseDouble(bStr);
+            double k3 = Double.parseDouble(k3Str);
+            if (k1 >= 0.0 && k3 >= 0.0 && b >= 0.0 && b <= 1.0) {
+                return new double[]{k1, b, k3};
+            } else {
+                throw new IllegalArgumentException("Illegal BM25 parameter value!");
+            }
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Illegal BM25 parameters!");
+        }
+    }
+
 
     /**
      * Print a message indicating the amount of memory used. The caller can
@@ -243,7 +287,14 @@ public class QryEval {
     private static StringBuilder formatResults(String queryName, ScoreList results, Map<String, String> parameters) throws IOException {
         StringBuilder outputStr = new StringBuilder();
         if (results.size() < 1) {
-            System.out.println("\tNo results.");
+            //System.out.println("\tNo results.");
+            Formatter fmt = new Formatter(outputStr);
+            fmt.format("%s\t", queryName);
+            fmt.format("%s\t", "Q0");
+            fmt.format("%s\t", "dummyRecord");
+            fmt.format("%d\t", 1);
+            fmt.format("%d\t", 0);
+            fmt.format("%s\n", "BeHappy");
         } else {
             Integer outputLength = getOutputLength(results, parameters);
             for (int i = 0; i < outputLength; i++) {
@@ -252,7 +303,7 @@ public class QryEval {
                 fmt.format("%s\t", "Q0");
                 fmt.format("%s\t", Idx.getExternalDocid(results.getDocid(i)));
                 fmt.format("%d\t", i + 1);
-                fmt.format("%.2f\t", results.getDocidScore(i));
+                fmt.format("%.12f\t", results.getDocidScore(i));
                 fmt.format("%s\n", "BeHappy");
             }
         }
@@ -323,6 +374,43 @@ public class QryEval {
                 throw new NumberFormatException("Illegal trecEvalOutputLength: not integer");
             }
         }
+
+        /**
+         * BM25:k_1=                Values are real numbers >= 0.0.
+         * BM25:b=                    Values are real numbers between 0.0 and 1.0.
+         * BM25:k_3=                Values are real numbers >= 0.0.
+         * Indri:mu=                  Values are integers >= 0.
+         * Indri:lambda=           Values are real numbers between 0.0 and 1.0.
+         */
+
+        //check Indri
+        String model = parameters.get("retrievalAlgorithm");
+        switch (model) {
+            case "BM25": {
+                if (parameters.containsKey("BM25:k_1") &&
+                        parameters.containsKey("BM25:b") &&
+                        parameters.containsKey("BM25:k_3")) {
+                    return parameters;
+                } else {
+                    throw new IllegalArgumentException("Required parameters for BM25" +
+                            " were missing from the parameter file.");
+                }
+            }
+
+            case "Indri": {
+                if (parameters.containsKey("Indri:mu") &&
+                        parameters.containsKey("Indri:lambda")) {
+                    return parameters;
+                } else {
+                    throw new IllegalArgumentException("Required parameters for Indri" +
+                            " were missing from the parameter file.");
+                }
+            }
+            default:
+                break;
+        }
         return parameters;
     }
+
+
 }

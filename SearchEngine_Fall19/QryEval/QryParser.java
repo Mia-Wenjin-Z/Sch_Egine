@@ -103,13 +103,13 @@ public class QryParser {
                 operator = new QrySopAnd();
                 break;
             case "#wand":
-                operator = new QrySopWand();//todo
+                operator = new QrySopWand();
                 break;
             case "#sum":
                 operator = new QrySopSum();
                 break;
             case "#wsum":
-                operator = new QrySopWsum();//todo
+                operator = new QrySopWsum();
                 break;
             case "#syn":
                 operator = new QryIopSyn();
@@ -351,7 +351,6 @@ public class QryParser {
                 qargs = new Qry[1];
                 qargs[0] = parseString(p.getPopped());
             } else if ((queryTree instanceof QrySopW) && Character.isDigit(queryString.charAt(0))) {
-                //weight = popWeight(queryString);//todo
                 p = popTerm(queryString);
                 weight = Double.parseDouble(p.getPopped());
                 weightExist = true;
@@ -375,7 +374,6 @@ public class QryParser {
                 for (int i = 0; i < qargs.length; i++) {
 
                     //  STUDENTS WILL NEED TO ADJUST THIS BLOCK TO HANDLE WEIGHTS IN HW2
-                    // todo add weight
                     queryTree.appendArg(qargs[i]);
                 }
             }

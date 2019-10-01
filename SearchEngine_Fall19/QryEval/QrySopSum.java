@@ -27,7 +27,6 @@ public class QrySopSum extends QrySop {
 
     @Override
     public double getDefaultScore(RetrievalModel r, int doc_id) throws IOException {
-        //to-check
         double score = 0.0;
         for (Qry q_i : this.args) {
             score += ((QrySop) q_i).getDefaultScore(r, doc_id);

@@ -7,7 +7,6 @@ import java.util.ArrayList;
 public abstract class QrySopW extends QrySop {
     private ArrayList<Double> weightVector = new ArrayList<>();
 
-    //todo setweight
 
     public void appendWeight(double weight) {
         this.weightVector.add(weight);

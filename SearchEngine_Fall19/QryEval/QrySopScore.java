@@ -98,14 +98,14 @@ public class QrySopScore extends QrySop {
         }
     }
 
-    //todo BM 25
+
     private double getScoreBM25(RetrievalModel r) throws IOException {
 
         QryIop qry = this.getArg(0);
         double score;
-        //todo check if there is no need to invoke hasMatch
+        // no need to validate hasMatchCache -> SoP that calls it already validates
 //        if(qry.docIteratorHasMatch(r)){
-//        // no need to validate hasMatchCache -> SoP that calls it already validates
+//
 //        // calculate score
 //           score = calculateBM25Score(qry, r);
 //
@@ -169,7 +169,7 @@ public class QrySopScore extends QrySop {
         return score;
     }
 
-    //todo : refactor duplicate code
+
     private double getDefaultScoreIndri(RetrievalModel r, int doc_id) throws IOException {
         QryIop qry = this.getArg(0);
         double score = calculateDefaultIndriScore(qry, r, doc_id);

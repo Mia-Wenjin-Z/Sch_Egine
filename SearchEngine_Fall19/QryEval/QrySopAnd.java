@@ -84,7 +84,6 @@ public class QrySopAnd extends QrySop {
     }
 
     private double getScoreIndri(RetrievalModel r) throws IOException {
-        //todo
         double score = 1.0;
         if (this.docIteratorHasMatchCache()) {
             //call get score
@@ -98,7 +97,7 @@ public class QrySopAnd extends QrySop {
                 }
             }
         } else {
-            //todo if there is no match at all
+            //if there is no match at all
             return 1.0;// or 0.0?
         }
         return Math.pow(score, 1.0 / this.args.size());

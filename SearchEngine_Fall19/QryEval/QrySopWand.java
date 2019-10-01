@@ -1,7 +1,7 @@
 import java.io.IOException;
 import java.util.ArrayList;
 
-//todo soley for indri
+
 public class QrySopWand extends QrySopW {
 //    public QrySopWand(ArrayList<Double> weightVector) {
 //        super(weightVector);

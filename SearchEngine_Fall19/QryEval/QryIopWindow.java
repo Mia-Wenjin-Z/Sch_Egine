@@ -1,7 +1,7 @@
 import java.io.IOException;
 import java.util.*;
 
-//todo
+
 public class QryIopWindow extends QryIop {
     private int n; // the parameter parsed from #near/n
     private int maxLoc = -1;// the max location index satisfying window/n
@@ -162,7 +162,7 @@ public class QryIopWindow extends QryIop {
         return;
     }//todo duplicate
 
-    //todo setup of min heap and update maxloc
+
     private boolean setlocationHeap(PriorityQueue<QryIop> locationHeap) {
         for (Qry q_i : this.args) {
             if (((QryIop) q_i).locIteratorHasMatch()) {

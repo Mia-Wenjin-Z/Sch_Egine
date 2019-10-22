@@ -214,21 +214,23 @@ public class QryEval {
      * @param model A retrieval model that will guide matching and scoring
      * @throws IOException Error accessing the Lucene index.
      */
-    //todo add query expansion main logic
     static void processQueryFile(Map<String, String> parameters,
                                  RetrievalModel model)
             throws Exception {
 
         BufferedReader input = null;
         BufferedWriter output = null;
+        BufferedWriter queryExpansionOutput = null;
 
         String queryFilePath = parameters.get("queryFilePath");
         String trecEvalOutputPath = parameters.get("trecEvalOutputPath");
+
         try {
             String qLine = null;
 
             input = new BufferedReader(new FileReader(queryFilePath));
             output = new BufferedWriter(new FileWriter(trecEvalOutputPath));
+
 
             //If initial doc ranking file (i.e. retrieval results) exists
             //Initialize the (scoreList) initialResults using the file
@@ -271,31 +273,31 @@ public class QryEval {
 
                     if (hasInitialRankingFile(parameters)) {
                         //read a document ranking in trec_eval input format from the fbInitialRankingFile;
-                        if (!initialResultsMap.containsKey("qid")) {
+                        if (!initialResultsMap.containsKey(qid)) {
                             throw new Exception(String.format("No document ranking results for query: %s.", qid));
                         }
-                        initialResults = initialResultsMap.get("qid");
-                        //todo to-check no need to write initial results again
+                        initialResults = initialResultsMap.get(qid);
 
                     } else {
                         initialResults = processQuery(query, model);
-                        //todo to-check no need to write initial results, only write expanded results
-//                        StringBuilder outputStr = formatResults(qid, initialResults, parameters);
-//                        output.write(outputStr.toString());
                     }
                     //todo optional illegal input checking : must have fbExpansionQueryFile
-                    BufferedWriter queryExpansionOutput = new BufferedWriter(new FileWriter(parameters.get("fbExpansionQueryFile")));
+                    queryExpansionOutput = new BufferedWriter(new FileWriter(parameters.get("fbExpansionQueryFile")));
 
                     String expandedQuery = getExpandedQuery(initialResults, parameters);
                     System.out.printf("%s: %s\n", qid, expandedQuery);
                     queryExpansionOutput.write(String.format("%s: %s\n", qid, expandedQuery));
                     double fbOrigWeight = Double.parseDouble(parameters.get("fbOrigWeight"));
+
+                    String defaultOp = model.defaultQrySopName();
+                    query = defaultOp + "(" + query + ")";
                     String combinedQuery = getCombinedQuery(query, expandedQuery, fbOrigWeight);
                     System.out.println("****Combined Query: " + combinedQuery);//todo delete
 
                     //Use the combined query to retrieve documents;
                     ScoreList results = processQuery(combinedQuery, model);
                     StringBuilder outputStr = formatResults(qid, results, parameters);
+                    System.out.println(outputStr);//todo todelete
                     output.write(outputStr.toString());
                 }
             }
@@ -304,6 +306,9 @@ public class QryEval {
         } finally {
             input.close();
             output.close();
+            if (queryExpansionOutput != null) {
+                queryExpansionOutput.close();
+            }
         }
     }
 
@@ -315,9 +320,7 @@ public class QryEval {
     }
 
     private static boolean hasInitialRankingFile(Map<String, String> parameters) {
-        return parameters.containsKey("fbInitialRankingFile") && parameters.get("fbInitialRankingFile") != "";
-        //todo tocheck != null?
-
+        return parameters.containsKey("fbInitialRankingFile");
     }
 
     /**
@@ -362,7 +365,7 @@ public class QryEval {
                 fmt.format("%s\t", "Q0");
                 fmt.format("%s\t", Idx.getExternalDocid(results.getDocid(i)));
                 fmt.format("%d\t", i + 1);
-                fmt.format("%.12f\t", results.getDocidScore(i));
+                fmt.format("%.18f\t", results.getDocidScore(i));
                 fmt.format("%s\n", "BeHappy");
             }
         }
@@ -408,6 +411,9 @@ public class QryEval {
         do {
             line = scan.nextLine();
             String[] pair = line.split("=");
+            if(pair.length <2 ){
+                throw new IllegalArgumentException( "Parameter value missing from the parameter file.");
+            }
             parameters.put(pair[0].trim(), pair[1].trim());
         } while (scan.hasNext());
 
@@ -556,22 +562,24 @@ public class QryEval {
         for (int i = 0; i < docNum; i++) {
 
             int internalDocId = initialResult.getDocid(i);
-            TermVector termVector = new TermVector(internalDocId, "body");//todo Default as body
+            TermVector termVector = new TermVector(internalDocId, "body");//todo default as body
             long docLength = Idx.getFieldLength("body", internalDocId);
             // P (I | d)
             double indriScore = initialResult.getDocidScore(i);
             Set<String> terms = new HashSet<>();// Set of terms under this doc
 
             //for each term
-            for (int termIndex = 0; termIndex < termVector.stemsLength(); termIndex++) {
+            for (int termIndex = 1; termIndex < termVector.stemsLength(); termIndex++) {
 
                 String term = termVector.stemString(termIndex);
-                terms.add(term);//update set of terms under this doc
-                termSet.add(term);//add term to termset
 
                 if (term.contains(",") || term.contains(".")) {
                     continue;
                 }
+
+                terms.add(term);//update set of terms under this doc
+                termSet.add(term);//add term to termset
+
                 // P (t | d)
                 double ptd = calculateTermProbInDoc(termVector, termIndex, docLength, mu);
                 double curScore = ptd * indriScore;
@@ -704,16 +712,13 @@ public class QryEval {
      */
     private static String getCombinedQuery(String query, String expandedQuery, double fbOrigWeight) {
         StringBuilder sb = new StringBuilder();
-        sb.append("#wand (");
+        sb.append("#WAND (");
         sb.append(String.format("%.4f ", fbOrigWeight));
         sb.append(query + " ");
         sb.append(String.format("%.4f ", 1 - fbOrigWeight));
         sb.append(expandedQuery);
         sb.append(" )");
         String combinedQuery = sb.toString();
-        //todo delete
-//        String combinedQuery = "#wand (" + fbOrigWeight + " " + query + " "
-//                + (1 - fbOrigWeight) + " " + expandedQuery + " )";
         return combinedQuery;
     }
 

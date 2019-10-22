@@ -286,11 +286,11 @@ public class QryEval {
                     //todo optional illegal input checking : must have fbExpansionQueryFile
                     BufferedWriter queryExpansionOutput = new BufferedWriter(new FileWriter(parameters.get("fbExpansionQueryFile")));
 
-                    String expandedQuery = getExpandedQuery(initialResults);
+                    String expandedQuery = getExpandedQuery(initialResults, parameters);
                     System.out.printf("%s: %s\n", qid, expandedQuery);
                     queryExpansionOutput.write(String.format("%s: %s\n", qid, expandedQuery));
-
-                    String combinedQuery = getCombinedQuery(query, expandedQuery);
+                    double fbOrigWeight = Double.parseDouble(parameters.get("fbOrigWeight"));
+                    String combinedQuery = getCombinedQuery(query, expandedQuery, fbOrigWeight);
                     System.out.println("****Combined Query: " + combinedQuery);//todo delete
 
                     //Use the combined query to retrieve documents;
@@ -511,8 +511,188 @@ public class QryEval {
      * @param initialResult
      * @return
      */
-    private static String getExpandedQuery(ScoreList initialResult) {
-        //read expansion parameters
+    private static String getExpandedQuery(ScoreList initialResult, Map<String, String> parameters) throws IOException {
+        //Read expansion parameters
+        //todo + getQueryExpansionParameters() && change readParameterFile()
+        int fbDocs = Integer.parseInt(parameters.get("fbDocs"));
+        int fbTerms = Integer.parseInt(parameters.get("fbTerms"));
+        int mu = Integer.parseInt(parameters.get("fbMu"));
+
+        // Extract potential expansion terms from top n documents
+        // Calculate an Indri score for each potential expansion term
+        /**
+         * NEED to loop over doc (DAAT) because TermVector is per document
+         * for each doc
+         *      - get term vector;
+         *      for each term in doc:
+         *      - calculate score**;
+         *      - update score (+=) in term score map
+         * **However since TermVector ONLY includes terms that appear in the document,
+         *   term score with tf = 0 in that doc will not be calculated.
+         *
+         *
+         *Solution -> maintain HashMap of <doc_id, set of {term}>
+         *          -> maintain mle for future use
+         *          -> maintain full set of terms
+         * RUN again:
+         * for each doc
+         *       - get doc_id
+         *      for each term:
+         *          if term in HashMap'set of {term}:
+         *              - pass (already calculated)
+         *          else:
+         *              tf = 0;
+         *              mle from hashMap
+         *              - calculate score
+         *              - update score (+=) in term score map
+         */
+        Map<Integer, Set<String>> docTermsMap = new HashMap<>();//<doc_id, set of {terms in doc}>
+        Map<String, Double> termMleMap = new HashMap<>(); //<term, mle score>
+        Set<String> termSet = new HashSet<>();
+
+        int docNum = getExpansionDocNum(fbDocs, initialResult.size());
+        Map<String, Double> expansionTermScoreMap = new HashMap<>();
+        // for each doc
+        for (int i = 0; i < docNum; i++) {
+
+            int internalDocId = initialResult.getDocid(i);
+            TermVector termVector = new TermVector(internalDocId, "body");//todo Default as body
+            long docLength = Idx.getFieldLength("body", internalDocId);
+            // P (I | d)
+            double indriScore = initialResult.getDocidScore(i);
+            Set<String> terms = new HashSet<>();// Set of terms under this doc
+
+            //for each term
+            for (int termIndex = 0; termIndex < termVector.stemsLength(); termIndex++) {
+
+                String term = termVector.stemString(termIndex);
+                terms.add(term);//update set of terms under this doc
+                termSet.add(term);//add term to termset
+
+                if (term.contains(",") || term.contains(".")) {
+                    continue;
+                }
+                // P (t | d)
+                double ptd = calculateTermProbInDoc(termVector, termIndex, docLength, mu);
+                double curScore = ptd * indriScore;
+
+                if (expansionTermScoreMap.containsKey(term)) {
+
+                    expansionTermScoreMap.put(term, expansionTermScoreMap.get(term) + curScore);
+                } else {
+                    expansionTermScoreMap.put(term, curScore);
+                }
+                // Pmle (t | C) -> unrelated to doc
+                double mle = 1.0 * termVector.totalStemFreq(termIndex) / Idx.getSumOfFieldLengths("body");
+                termMleMap.putIfAbsent(term, mle);//update mle
+            }
+            docTermsMap.put(internalDocId, terms);//update map of doc to terms
+        }
+
+        //Calculate term score omitted (absent from TermVector due to tf = 0)
+        for (int i = 0; i < docNum; i++) {
+            int internalDocId = initialResult.getDocid(i);
+            long docLength = Idx.getFieldLength("body", internalDocId);
+            // P (I | d)
+            double indriScore = initialResult.getDocidScore(i);
+            Set terms = docTermsMap.get(internalDocId);
+
+            for (String term : termSet) {
+                if (terms.contains(term)) {
+                    continue;
+                }
+
+                double mle = termMleMap.get(term);
+                double ptd = calculateTermProbInDoc(docLength, mu, mle);
+                double curScore = ptd * indriScore;
+
+                if (expansionTermScoreMap.containsKey(term)) {
+
+                    expansionTermScoreMap.put(term, expansionTermScoreMap.get(term) + curScore);
+                } else {
+                    expansionTermScoreMap.put(term, curScore);
+                }
+            }
+        }
+
+        List<Map.Entry<String, Double>> sortedExpensionTermScoreList = sortTermScoreMap(expansionTermScoreMap);
+
+        // Use the top m terms to create an expansion query Qlearned
+        String expandedQuery = createExpandedQuery(sortedExpensionTermScoreList, fbTerms);
+        return expandedQuery;
+
+    }
+
+
+    /**
+     * Calculate idf adjusted P (t | d)  for Indri query expansion
+     *
+     * @param termVector
+     * @param termIndex
+     * @param docLength
+     * @param mu
+     * @return
+     * @throws IOException
+     */
+    private static double calculateTermProbInDoc(TermVector termVector, int termIndex, long docLength, int mu) throws IOException {
+        // P (t | d)
+        int tf = termVector.stemFreq(termIndex);
+        // Pmle (t | C)
+        double mle = 1.0 * termVector.totalStemFreq(termIndex) / Idx.getSumOfFieldLengths("body");
+        double idf = Math.log(1 / mle);
+        return (tf + mu * mle) / (docLength + mu * 1.0) * idf;
+    }
+
+    /**
+     * Calculate idf adjusted P (t | d)  for Indri query expansion, tf = 0
+     *
+     * @param docLength
+     * @param mu
+     * @param mle       Pmle (t | C)
+     * @return
+     */
+    private static double calculateTermProbInDoc(long docLength, int mu, double mle) {
+        int tf = 0;
+        double idf = Math.log(1 / mle);
+        return (tf + mu * mle) / (docLength + mu * 1.0) * idf;
+    }
+
+    private static int getExpansionDocNum(int fbDocs, int initialResultSize) {
+        return Math.min(fbDocs, initialResultSize);
+    }
+
+    /**
+     * Sort into a list , DESC
+     *
+     * @param expansionTermScoreMap
+     * @return
+     */
+    private static List<Map.Entry<String, Double>> sortTermScoreMap(Map<String, Double> expansionTermScoreMap) {
+        List<Map.Entry<String, Double>> list = new LinkedList<>(expansionTermScoreMap.entrySet());
+
+        //Sort by descending order
+        Collections.sort(list, (o1, o2) -> (o2.getValue()).compareTo(o1.getValue()));
+
+//        // put data from sorted list to hashmap
+//        HashMap<String, Double> sortedExpensionTermScoreList = new LinkedHashMap<>();
+//
+//        // put data from sorted list to hashmap
+//        for (Map.Entry<String, Double> entry : list) {
+//            sortedExpensionTermScoreMap.put(entry.getKey(), entry.getValue());
+//        }
+        return list;
+    }
+
+    private static String createExpandedQuery(List<Map.Entry<String, Double>> sortedExpensionTermScoreList, int termNum) {
+        StringBuilder expandedQuery = new StringBuilder();
+        expandedQuery.append("#wand (");
+        for (int i = 0; i < termNum; i++) {
+            Map.Entry<String, Double> entry = sortedExpensionTermScoreList.get(i);
+            expandedQuery.append(String.format("%.4f ", entry.getValue()));
+            expandedQuery.append(String.format("%s ", entry.getKey()));
+        }
+        expandedQuery.append(")");
+        return expandedQuery.toString();
     }
 
     /**
@@ -522,13 +702,12 @@ public class QryEval {
      * @param expandedQuery
      * @return
      */
-    private static String getCombinedQuery(String query, String expandedQuery) {
-        double fbOrigWeight = Double.parseDouble(parameters.get("fbOrigWeight"));
+    private static String getCombinedQuery(String query, String expandedQuery, double fbOrigWeight) {
         StringBuilder sb = new StringBuilder();
         sb.append("#wand (");
-        sb.append(String.format("%.2f ", fbOrigWeight));
+        sb.append(String.format("%.4f ", fbOrigWeight));
         sb.append(query + " ");
-        sb.append(String.format("%.2f ", 1 - fbOrigWeight));
+        sb.append(String.format("%.4f ", 1 - fbOrigWeight));
         sb.append(expandedQuery);
         sb.append(" )");
         String combinedQuery = sb.toString();
@@ -537,5 +716,6 @@ public class QryEval {
 //                + (1 - fbOrigWeight) + " " + expandedQuery + " )";
         return combinedQuery;
     }
+
 
 }

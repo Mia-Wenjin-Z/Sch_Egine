@@ -24,6 +24,6 @@ public class RetrievalModelBM25 extends RetrievalModel{
 
     @Override
     public String defaultQrySopName() {
-        return new String ("#sum");
+        return new String ("#SUM");
     }
 }

@@ -18,6 +18,6 @@ public class RetrievalModelIndri extends RetrievalModel{
 
     @Override
     public String defaultQrySopName() {
-        return new String ("#and");
+        return new String ("#AND");
     }
 }

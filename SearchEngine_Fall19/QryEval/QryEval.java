@@ -214,9 +214,10 @@ public class QryEval {
      * @param model A retrieval model that will guide matching and scoring
      * @throws IOException Error accessing the Lucene index.
      */
+    //todo add query expansion main logic
     static void processQueryFile(Map<String, String> parameters,
                                  RetrievalModel model)
-            throws IOException {
+            throws Exception {
 
         BufferedReader input = null;
         BufferedWriter output = null;
@@ -228,6 +229,13 @@ public class QryEval {
 
             input = new BufferedReader(new FileReader(queryFilePath));
             output = new BufferedWriter(new FileWriter(trecEvalOutputPath));
+
+            //If initial doc ranking file (i.e. retrieval results) exists
+            //Initialize the (scoreList) initialResults using the file
+            Map<String, ScoreList> initialResultsMap = new HashMap<>();
+            if (hasInitialRankingFile(parameters)) {
+                initialResultsMap = processInitialRankingFile(parameters.get("fbInitialRankingFile"));
+            }
 
             //  Each pass of the loop processes one query.
 
@@ -241,16 +249,54 @@ public class QryEval {
                     throw new IllegalArgumentException
                             ("Syntax error:  Each line must contain one ':'.");
                 }
-
                 String qid = pair[0];
                 String query = pair[1];
-                ScoreList results = processQuery(query, model);
-                StringBuilder outputStr = formatResults(qid, results, parameters);
-                output.write(outputStr.toString());
+                ScoreList initialResults;
 
-                if (results != null) {
-                    printResults(qid, outputStr);
-                    System.out.println();
+                if (!needExpansion(parameters)) {
+
+                    initialResults = processQuery(query, model);
+                    StringBuilder outputStr = formatResults(qid, initialResults, parameters);
+                    output.write(outputStr.toString());
+
+                    if (initialResults != null) {
+                        printResults(qid, outputStr);
+                        System.out.println();
+                    }
+                    return;
+
+                } else {// Perform query expansion
+
+                    //todo illegal input checking for query expansion;
+
+                    if (hasInitialRankingFile(parameters)) {
+                        //read a document ranking in trec_eval input format from the fbInitialRankingFile;
+                        if (!initialResultsMap.containsKey("qid")) {
+                            throw new Exception(String.format("No document ranking results for query: %s.", qid));
+                        }
+                        initialResults = initialResultsMap.get("qid");
+                        //todo to-check no need to write initial results again
+
+                    } else {
+                        initialResults = processQuery(query, model);
+                        //todo to-check no need to write initial results, only write expanded results
+//                        StringBuilder outputStr = formatResults(qid, initialResults, parameters);
+//                        output.write(outputStr.toString());
+                    }
+                    //todo optional illegal input checking : must have fbExpansionQueryFile
+                    BufferedWriter queryExpansionOutput = new BufferedWriter(new FileWriter(parameters.get("fbExpansionQueryFile")));
+
+                    String expandedQuery = getExpandedQuery(initialResults);
+                    System.out.printf("%s: %s\n", qid, expandedQuery);
+                    queryExpansionOutput.write(String.format("%s: %s\n", qid, expandedQuery));
+
+                    String combinedQuery = getCombinedQuery(query, expandedQuery);
+                    System.out.println("****Combined Query: " + combinedQuery);//todo delete
+
+                    //Use the combined query to retrieve documents;
+                    ScoreList results = processQuery(combinedQuery, model);
+                    StringBuilder outputStr = formatResults(qid, results, parameters);
+                    output.write(outputStr.toString());
                 }
             }
         } catch (IOException ex) {
@@ -259,6 +305,19 @@ public class QryEval {
             input.close();
             output.close();
         }
+    }
+
+    /**
+     * Check if query expansion is needed
+     */
+    private static boolean needExpansion(Map<String, String> parameters) {
+        return parameters.containsKey("fb") && parameters.get("fb").toLowerCase().equals("true");
+    }
+
+    private static boolean hasInitialRankingFile(Map<String, String> parameters) {
+        return parameters.containsKey("fbInitialRankingFile") && parameters.get("fbInitialRankingFile") != "";
+        //todo tocheck != null?
+
     }
 
     /**
@@ -412,5 +471,71 @@ public class QryEval {
         return parameters;
     }
 
+    /**
+     * Get Map of <qid, Scorelist> from existing doc ranking provided
+     */
+    private static Map<String, ScoreList> processInitialRankingFile(String fbInitialRankingFile) throws Exception {
+        Map<String, ScoreList> initialResultMap = new HashMap<>();
+        try {
+            BufferedReader in = new BufferedReader(new FileReader(fbInitialRankingFile));
+            String input;
+            while ((input = in.readLine()) != null) {
+                String[] inputLine = input.split("\t");
+                if (inputLine.length != 6) {
+                    throw new Exception("Incomplete initial ranking file!");
+                }
+                String qid = inputLine[0];
+                String externalDocId = inputLine[2];
+                double score = Double.parseDouble(inputLine[4]);
+                ScoreList scoreList;
+                if (!initialResultMap.containsKey(qid)) {//put a score list for new query
+                    initialResultMap.put(qid, new ScoreList());
+                }
+                //Add scoreEntry in the current scorelist
+                scoreList = initialResultMap.get(qid);
+                int internalDocId = Idx.getInternalDocid(externalDocId);
+                scoreList.add(internalDocId, score);
+            }
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return initialResultMap;
+    }
+
+    /**
+     * Indri psudo query expansion
+     * e.g. #wand (0.73 obama 0.43 family 0.40 white 0.65 tree 0.33 politics ...)
+     *
+     * @param initialResult
+     * @return
+     */
+    private static String getExpandedQuery(ScoreList initialResult) {
+        //read expansion parameters
+    }
+
+    /**
+     * create a combined query as #wand (w qoriginal + (1-w) qexpandedquery);
+     *
+     * @param query
+     * @param expandedQuery
+     * @return
+     */
+    private static String getCombinedQuery(String query, String expandedQuery) {
+        double fbOrigWeight = Double.parseDouble(parameters.get("fbOrigWeight"));
+        StringBuilder sb = new StringBuilder();
+        sb.append("#wand (");
+        sb.append(String.format("%.2f ", fbOrigWeight));
+        sb.append(query + " ");
+        sb.append(String.format("%.2f ", 1 - fbOrigWeight));
+        sb.append(expandedQuery);
+        sb.append(" )");
+        String combinedQuery = sb.toString();
+        //todo delete
+//        String combinedQuery = "#wand (" + fbOrigWeight + " " + query + " "
+//                + (1 - fbOrigWeight) + " " + expandedQuery + " )";
+        return combinedQuery;
+    }
 
 }

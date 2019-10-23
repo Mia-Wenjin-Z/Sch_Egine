@@ -269,8 +269,6 @@ public class QryEval {
 
                 } else {// Perform query expansion
 
-                    //todo illegal input checking for query expansion;
-
                     if (hasInitialRankingFile(parameters)) {
                         //read a document ranking in trec_eval input format from the fbInitialRankingFile;
                         if (!initialResultsMap.containsKey(qid)) {
@@ -289,6 +287,7 @@ public class QryEval {
                     queryExpansionOutput.write(String.format("%s: %s\n", qid, expandedQuery));
                     double fbOrigWeight = Double.parseDouble(parameters.get("fbOrigWeight"));
 
+                    //TODO Wrap query
                     String defaultOp = model.defaultQrySopName();
                     query = defaultOp + "(" + query + ")";
                     String combinedQuery = getCombinedQuery(query, expandedQuery, fbOrigWeight);
@@ -297,7 +296,7 @@ public class QryEval {
                     //Use the combined query to retrieve documents;
                     ScoreList results = processQuery(combinedQuery, model);
                     StringBuilder outputStr = formatResults(qid, results, parameters);
-                    System.out.println(outputStr);//todo todelete
+                    //System.out.println(outputStr);//todo todelete
                     output.write(outputStr.toString());
                 }
             }
@@ -411,8 +410,8 @@ public class QryEval {
         do {
             line = scan.nextLine();
             String[] pair = line.split("=");
-            if(pair.length <2 ){
-                throw new IllegalArgumentException( "Parameter value missing from the parameter file.");
+            if (pair.length < 2) {
+                throw new IllegalArgumentException("Parameter value missing from the parameter file.");
             }
             parameters.put(pair[0].trim(), pair[1].trim());
         } while (scan.hasNext());
@@ -474,7 +473,43 @@ public class QryEval {
             default:
                 break;
         }
+
+        /**
+         * Check query expansion parameter
+         */
+        if (parameters.containsKey("fb") && parameters.get("fb").toLowerCase().equals("true")) {
+            try {
+                checkQueryExpansionParameters(parameters);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
         return parameters;
+    }
+
+    private static void checkQueryExpansionParameters(Map<String, String> parameters) throws Exception {
+
+        if (parameters.containsKey("fbDocs") &&
+                parameters.containsKey("fbTerms") &&
+                parameters.containsKey("fbMu") &&
+                parameters.containsKey("fbOrigWeight") &&
+                parameters.containsKey("fbExpansionQueryFile")) {
+            try {
+                int fbTerms = Integer.parseInt(parameters.get("fbTerms"));
+                int fbDocs = Integer.parseInt(parameters.get("fbDocs"));
+                int mu = Integer.parseInt(parameters.get("fbMu"));
+                double fbOrigWeight = Double.parseDouble(parameters.get("fbOrigWeight"));
+                if (fbTerms <= 0 || fbDocs <= 0 || mu < 0 || fbOrigWeight < 0.0 || fbOrigWeight > 1.0) {
+                    throw new Exception("Illegal input parameter values for Indri query expansion.");
+                }
+                return;
+            } catch (NumberFormatException e) {
+                throw new NumberFormatException("Illegal input parameter type for Indri query expansion.");
+            }
+        } else {
+            throw new IllegalArgumentException("Required parameters for Indri query expansion" +
+                    " were missing from the parameter file.");
+        }
     }
 
     /**
@@ -519,7 +554,6 @@ public class QryEval {
      */
     private static String getExpandedQuery(ScoreList initialResult, Map<String, String> parameters) throws IOException {
         //Read expansion parameters
-        //todo + getQueryExpansionParameters() && change readParameterFile()
         int fbDocs = Integer.parseInt(parameters.get("fbDocs"));
         int fbTerms = Integer.parseInt(parameters.get("fbTerms"));
         int mu = Integer.parseInt(parameters.get("fbMu"));
@@ -562,7 +596,7 @@ public class QryEval {
         for (int i = 0; i < docNum; i++) {
 
             int internalDocId = initialResult.getDocid(i);
-            TermVector termVector = new TermVector(internalDocId, "body");//todo default as body
+            TermVector termVector = new TermVector(internalDocId, "body");//todo check default as body
             long docLength = Idx.getFieldLength("body", internalDocId);
             // P (I | d)
             double indriScore = initialResult.getDocidScore(i);
@@ -680,20 +714,12 @@ public class QryEval {
 
         //Sort by descending order
         Collections.sort(list, (o1, o2) -> (o2.getValue()).compareTo(o1.getValue()));
-
-//        // put data from sorted list to hashmap
-//        HashMap<String, Double> sortedExpensionTermScoreList = new LinkedHashMap<>();
-//
-//        // put data from sorted list to hashmap
-//        for (Map.Entry<String, Double> entry : list) {
-//            sortedExpensionTermScoreMap.put(entry.getKey(), entry.getValue());
-//        }
         return list;
     }
 
     private static String createExpandedQuery(List<Map.Entry<String, Double>> sortedExpensionTermScoreList, int termNum) {
         StringBuilder expandedQuery = new StringBuilder();
-        expandedQuery.append("#wand (");
+        expandedQuery.append("#WAND (");
         for (int i = 0; i < termNum; i++) {
             Map.Entry<String, Double> entry = sortedExpensionTermScoreList.get(i);
             expandedQuery.append(String.format("%.4f ", entry.getValue()));

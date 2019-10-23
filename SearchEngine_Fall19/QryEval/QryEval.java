@@ -238,7 +238,9 @@ public class QryEval {
             if (hasInitialRankingFile(parameters)) {
                 initialResultsMap = processInitialRankingFile(parameters.get("fbInitialRankingFile"));
             }
-
+            if (needExpansion(parameters)){
+                queryExpansionOutput = new BufferedWriter(new FileWriter(parameters.get("fbExpansionQueryFile")));
+            }
             //  Each pass of the loop processes one query.
 
             while ((qLine = input.readLine()) != null) {
@@ -265,7 +267,6 @@ public class QryEval {
                         printResults(qid, outputStr);
                         System.out.println();
                     }
-                    return;
 
                 } else {// Perform query expansion
 
@@ -279,8 +280,7 @@ public class QryEval {
                     } else {
                         initialResults = processQuery(query, model);
                     }
-                    //todo optional illegal input checking : must have fbExpansionQueryFile
-                    queryExpansionOutput = new BufferedWriter(new FileWriter(parameters.get("fbExpansionQueryFile")));
+
 
                     String expandedQuery = getExpandedQuery(initialResults, parameters);
                     System.out.printf("%s: %s\n", qid, expandedQuery);
@@ -521,7 +521,8 @@ public class QryEval {
             BufferedReader in = new BufferedReader(new FileReader(fbInitialRankingFile));
             String input;
             while ((input = in.readLine()) != null) {
-                String[] inputLine = input.split("\t");
+                String[] inputLine = input.split("\t");//For local test
+                //String[] inputLine = input.split(" ");//For Homework testing
                 if (inputLine.length != 6) {
                     throw new Exception("Incomplete initial ranking file!");
                 }

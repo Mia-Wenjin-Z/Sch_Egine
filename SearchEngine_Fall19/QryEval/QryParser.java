@@ -341,7 +341,7 @@ public class QryParser {
             //  Now handle the argument (which could be a subquery).
 
             Qry[] qargs = null;
-             PopData<String, String> p;
+            PopData<String, String> p;
             double weight = 0;
             boolean weightExist = false;
             boolean appendArg = true;
@@ -350,7 +350,11 @@ public class QryParser {
                 p = popSubquery(queryString);
                 qargs = new Qry[1];
                 qargs[0] = parseString(p.getPopped());
-            } else if ((queryTree instanceof QrySopW) && Character.isDigit(queryString.charAt(0))) {
+            } else if ((queryTree instanceof QrySopW) &&
+                    Character.isDigit(queryString.charAt(0)) &&
+                    !Character.isDigit(queryString.charAt(1))) {
+                //todo to deal with "0.0019 250" example. But this method only allows weight < 1(0.xxx) or integer MUST CHANGE
+
                 p = popTerm(queryString);
                 weight = Double.parseDouble(p.getPopped());
                 weightExist = true;

@@ -4,6 +4,7 @@
 
 import java.io.*;
 import java.lang.IllegalArgumentException;
+import java.util.List;
 
 /**
  * The SCORE operator for all retrieval models.
@@ -143,6 +144,69 @@ public class QrySopScore extends QrySop {
         return score;
     }
 
+    /**
+     * Calculate BM25 score for Learning to Rank in FeatureVector class
+     * using term vector instead of inverted list
+     *
+     * @param doc_id internal doc id
+     * @param field
+     * @param terms
+     * @return
+     * @throws IOException // tokenize the query before calling featureBM25
+     *                     queryStems = QryParser.tokenizeQuery (query);
+     *                     <p>
+     *                     featureBM25 (queryStems, docid, field):
+     *                     score = 0
+     *                     for each stem in <docid, field>
+     *                     if stem is a queryStem
+     *                     score += BM25 term score for stem
+     *                     end
+     *                     end
+     *                     <p>
+     *                     return score
+     */
+    public double getScoreBM25(int doc_id, String field, List<String> terms, RetrievalModelLetor r) throws IOException {
+        double score = 0;
+
+        TermVector termVector = new TermVector(doc_id, field);
+        //Term vector for this field does not exist, set BM25 score to 0.0 (consistent with HW2 implementation)
+        if (termVector.positionsLength() == 0 || termVector.stemsLength() == 0) {
+            return Double.MIN_VALUE;
+        }
+
+        for (String term : terms) {
+            int index = termVector.indexOfStem(term);
+            if (index == -1) {
+                // field BOW does not contain this term, skip
+                continue;
+            }
+
+            // RSJ
+            int df = termVector.stemDf(index);
+            long N = Idx.getNumDocs();
+            double RSJ = Math.max(Math.log((N - df + 0.5) / (df + 0.5)), 0);
+
+
+            // tf weight
+            double k1 = ((RetrievalModelLetor) r).k1;
+            double b = ((RetrievalModelLetor) r).b;
+            int tf = termVector.stemFreq(index);
+            long docLength = Idx.getFieldLength(field, doc_id);
+            double avgDocLen = Idx.getSumOfFieldLengths(field) / (double) Idx.getDocCount(field);
+            double tf_weight = tf / (tf + k1 * ((1 - b) + b * docLength / avgDocLen));
+
+
+            //user weight
+            double k3 = ((RetrievalModelLetor) r).k3;
+            //In this system -> Your BM25 queries will always have qtf=1
+            int qtf = 1;
+            double userWeight = (k3 + 1) * qtf / (k3 + qtf);
+
+            score += RSJ * tf_weight * userWeight;
+        }
+        return score;
+    }
+
     private double getDefaultScoreBM25(RetrievalModel r) {
         return 0.0; // tf = 0 -> total BM25 score for this inverted list = 0
     }
@@ -153,6 +217,55 @@ public class QrySopScore extends QrySop {
         double score = calculateIndriScore(qry, r);
         return score;
     }
+
+    /**
+     * Calculate Indri score for Learning to Rank in FeatureVector class
+     * using term vector instead of inverted list
+     *
+     * @param doc_id
+     * @param field
+     * @param terms
+     * @param r
+     * @return
+     */
+    public double getScoreIndri(int doc_id, String field, List<String> terms, RetrievalModelLetor r) throws IOException {
+        //Default: Indri #AND
+
+        double score = 1;
+        long docLength = Idx.getFieldLength(field, doc_id);
+        long collectionLength = Idx.getSumOfFieldLengths(field);
+        TermVector termVector = new TermVector(doc_id, field);
+
+        //Term vector for this field does not exist, set Indri score to 0.0 (consistent with HW2 implementation)
+        if (termVector.positionsLength() == 0 || termVector.stemsLength() == 0) {
+            return Double.MIN_VALUE;
+        }
+
+        boolean match = false;
+
+        for (String term : terms) {
+            int index = termVector.indexOfStem(term);
+            double tf = index == -1 ? 0 : termVector.stemFreq(index);
+            match = (index != -1);
+
+            double lambda = r.lambda;
+            double mu = r.mu;
+
+            double ctf = Idx.getTotalTermFreq(field, term);
+            double mle = ctf / collectionLength;
+            score *= (1 - lambda) * (tf + mu * mle) / (docLength + mu) + lambda * mle;
+        }
+
+        // if a field does not match any term of a query, the score for the field is 0.
+        // Documents that have no terms in common with the query were not given a score.
+        if (!match) {
+            return Double.MIN_VALUE;
+        }
+
+        score = Math.pow(score, 1.0 / terms.size());
+        return score;
+    }
+
 
     private double calculateIndriScore(QryIop qry, RetrievalModel r) throws IOException {
         double score;
@@ -200,5 +313,34 @@ public class QrySopScore extends QrySop {
 
         Qry q = this.args.get(0);
         q.initialize(r);
+    }
+
+    /**
+     * Calculate the percentage of query terms that match the document field.
+     * For learning to rank
+     *
+     * @param doc_id
+     * @param field
+     * @param terms
+     * @return
+     */
+    public double getTermOverlapPct(int doc_id, String field, List<String> terms) throws IOException {
+        if (terms.size() == 0) {
+            return Double.MIN_VALUE;
+        }
+        TermVector termVector = new TermVector(doc_id, field);
+        //Term vector for this field does not exist, set Indri score to 0.0 (consistent with HW2 implementation)
+        if (termVector.positionsLength() == 0 || termVector.stemsLength() == 0) {
+            return Double.MIN_VALUE;
+        }
+        int commonTermCount = 0;
+        for (String term : terms) {
+            int index = termVector.indexOfStem(term);
+            if (index == -1) {
+                continue;
+            }
+            commonTermCount++;
+        }
+        return commonTermCount / (1.0 * terms.size());
     }
 }

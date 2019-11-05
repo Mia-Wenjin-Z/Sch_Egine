@@ -56,14 +56,133 @@ public class QryEval {
         Idx.open(parameters.get("indexPath"));
         RetrievalModel model = initializeRetrievalModel(parameters);
 
-        //  Perform experiments.
+        if (model instanceof RetrievalModelLetor) {
+            //TODO Learning to rank
+            //Get & write feature vectors of training data
+            FeatureVector featureVector = new FeatureVector((RetrievalModelLetor) model);
+            featureVector.writeTrainingFeatureVector();
+            //todo Learning: Train SVM using training data
+            trainSVM((RetrievalModelLetor) model);
+            //Get & write feature vectors of testing data
+            Map<Integer, List<String>> docSequence = featureVector.writeTestingFeatureVector();
+            //Re-rank: Apply SVM on testing data's feature vectors
+            applySVM((RetrievalModelLetor) model);
+            //Write re-rank results to TrecEvalOutput -> write a static method for this
+            writeLetorScore((RetrievalModelLetor) model, docSequence, parameters);
+        } else {
 
-        processQueryFile(parameters, model);
+            //  Perform experiments.
+
+            processQueryFile(parameters, model);
+        }
 
         //  Clean up.
 
         timer.stop();
         System.out.println("Time:  " + timer);
+    }
+
+
+    private static void trainSVM(RetrievalModelLetor model) throws Exception {
+        Process cmdProc = Runtime.getRuntime().exec(new String[]{model.svmRankLearnPath, "-c",
+                String.valueOf(model.svmRankParamC), model.trainingFeatureVectorsFile, model.svmRankModelFile});
+        consume(cmdProc);
+    }
+
+    private static void applySVM(RetrievalModelLetor model) throws Exception {
+        Process cmdProc = Runtime.getRuntime().exec(new String[]{model.svmRankClassifyPath,
+                model.testingFeatureVectorsFile, model.svmRankModelFile, model.testingDocumentScores});
+        consume(cmdProc);
+    }
+
+
+    private static void writeLetorScore(RetrievalModelLetor model, Map<Integer, List<String>> docSequence,
+                                        Map<String, String> parameters) {
+        BufferedWriter output = null;
+        try {
+            output = new BufferedWriter(new FileWriter(parameters.get("trecEvalOutputPath")));
+            Deque<Double> SVMScoreQueue = readSVMScores(model.testingDocumentScores);
+
+            for (Map.Entry<Integer, List<String>> queryEntry : docSequence.entrySet()) {//for each qid
+
+                int qid = queryEntry.getKey();
+                List<String> externalDocIds = queryEntry.getValue();
+                ScoreList result = new ScoreList();
+
+                for (int i = 0; i < externalDocIds.size(); i++) {// for each doc
+
+                    if (!SVMScoreQueue.isEmpty()) {
+
+                        result.add(Idx.getInternalDocid(externalDocIds.get(i)), SVMScoreQueue.pollFirst());
+                    }
+                }
+                if (result != null) {
+
+                    StringBuilder outputStr = formatResults(String.valueOf(qid), result, parameters);
+                    printResults("Learning to rank", outputStr);
+                    output.write(outputStr.toString());
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            if (output != null) {
+                try {
+                    output.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+
+
+    }
+
+    static Deque<Double> readSVMScores(String testingDocumentScores) throws IOException {
+        BufferedReader input = null;
+        Deque<Double> SVMScoreQueue = new LinkedList<>();
+
+        try {
+            String docScore = null;
+            input = new BufferedReader(new FileReader(testingDocumentScores));
+
+            while ((docScore = input.readLine()) != null) {
+
+                SVMScoreQueue.offer(Double.parseDouble(docScore.trim()));
+            }
+        } catch (IOException ex) {
+            ex.printStackTrace();
+        } finally {
+            input.close();
+
+        }
+        return SVMScoreQueue;
+    }
+
+
+    private static void consume(Process cmdProc) throws Exception {
+        // consume stdout and print it out for debugging purposes
+        BufferedReader stdoutReader = new BufferedReader(
+                new InputStreamReader(cmdProc.getInputStream()));
+        String line;
+        while ((line = stdoutReader.readLine()) != null) {
+            System.out.println(line);
+        }
+        // consume stderr and print it for debugging purposes
+        BufferedReader stderrReader = new BufferedReader(
+                new InputStreamReader(cmdProc.getErrorStream()));
+        while ((line = stderrReader.readLine()) != null) {
+            System.out.println(line);
+        }
+
+        // get the return value from the executable. 0 means success, non-zero
+        // indicates a problem
+        int retValue = cmdProc.waitFor();
+        if (retValue != 0) {
+            throw new Exception("SVM Rank crashed.");
+        }
     }
 
     /**
@@ -117,6 +236,9 @@ public class QryEval {
             } catch (Exception e) {
                 throw new IllegalArgumentException("Illegal Indri parameters!");
             }
+        } else if (modelString.equals("letor")) {
+            model = new RetrievalModelLetor(parameters);
+
         } else {
             throw new IllegalArgumentException
                     ("Unknown retrieval model " + parameters.get("retrievalAlgorithm"));
@@ -156,7 +278,7 @@ public class QryEval {
      *
      * @param gc If true, run the garbage collector before reporting.
      */
-    public static void printMemoryUsage(boolean gc) {
+    public static void printMemoryUsage(boolean gc, List<Double> total) {
 
         Runtime runtime = Runtime.getRuntime();
 
@@ -165,6 +287,8 @@ public class QryEval {
 
         System.out.println("Memory used:  "
                 + ((runtime.totalMemory() - runtime.freeMemory()) / (1024L * 1024L)) + " MB");
+
+        total.set(0, total.get(0) + ((runtime.totalMemory() - runtime.freeMemory()) / (1024L * 1024L)));
     }
 
     /**
@@ -238,14 +362,20 @@ public class QryEval {
             if (hasInitialRankingFile(parameters)) {
                 initialResultsMap = processInitialRankingFile(parameters.get("fbInitialRankingFile"));
             }
-            if (needExpansion(parameters)){
+            if (needExpansion(parameters)) {
                 queryExpansionOutput = new BufferedWriter(new FileWriter(parameters.get("fbExpansionQueryFile")));
             }
             //  Each pass of the loop processes one query.
 
+            //to-delete
+            List<Double> totalMem = new ArrayList<>();
+            totalMem.add(0, 0.0);
+            int loopTime = 0;
+
             while ((qLine = input.readLine()) != null) {
 
-                printMemoryUsage(false);
+                printMemoryUsage(false, totalMem);
+                loopTime += 1;
                 System.out.println("Query " + qLine);
                 String[] pair = qLine.split(":");
 
@@ -263,10 +393,10 @@ public class QryEval {
                     StringBuilder outputStr = formatResults(qid, initialResults, parameters);
                     output.write(outputStr.toString());
 
-                    if (initialResults != null) {
-                        printResults(qid, outputStr);
-                        System.out.println();
-                    }
+//                    if (initialResults != null) {
+//                        printResults(qid, outputStr);
+//                        System.out.println();
+//                    }
 
                 } else {// Perform query expansion
 
@@ -300,6 +430,7 @@ public class QryEval {
                     output.write(outputStr.toString());
                 }
             }
+            System.out.println("Average memory: " + totalMem.get(0) / loopTime);
         } catch (IOException ex) {
             ex.printStackTrace();
         } finally {
@@ -350,21 +481,21 @@ public class QryEval {
         if (results.size() < 1) {
             //System.out.println("\tNo results.");
             Formatter fmt = new Formatter(outputStr);
-            fmt.format("%s\t", queryName);
-            fmt.format("%s\t", "Q0");
-            fmt.format("%s\t", "dummyRecord");
-            fmt.format("%d\t", 1);
-            fmt.format("%d\t", 0);
+            fmt.format("%s ", queryName);
+            fmt.format("%s ", "Q0");
+            fmt.format("%s ", "dummyRecord");
+            fmt.format("%d ", 1);
+            fmt.format("%d ", 0);
             fmt.format("%s\n", "BeHappy");
         } else {
             Integer outputLength = getOutputLength(results, parameters);
             for (int i = 0; i < outputLength; i++) {
                 Formatter fmt = new Formatter(outputStr);
-                fmt.format("%s\t", queryName);
-                fmt.format("%s\t", "Q0");
-                fmt.format("%s\t", Idx.getExternalDocid(results.getDocid(i)));
-                fmt.format("%d\t", i + 1);
-                fmt.format("%.18f\t", results.getDocidScore(i));
+                fmt.format("%s ", queryName);
+                fmt.format("%s ", "Q0");
+                fmt.format("%s ", Idx.getExternalDocid(results.getDocid(i)));
+                fmt.format("%d ", i + 1);
+                fmt.format("%.18f ", results.getDocidScore(i));
                 fmt.format("%s\n", "BeHappy");
             }
         }
@@ -417,6 +548,17 @@ public class QryEval {
         } while (scan.hasNext());
 
         scan.close();
+
+        /**
+         * Check query expansion parameter
+         */
+        if (parameters.containsKey("fb") && parameters.get("fb").toLowerCase().equals("true")) {
+            try {
+                checkQueryExpansionParameters(parameters);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
 
         //  Confirm that some of the essential parameters are present.
         //  This list is not complete.  It is just intended to catch silly
@@ -474,16 +616,7 @@ public class QryEval {
                 break;
         }
 
-        /**
-         * Check query expansion parameter
-         */
-        if (parameters.containsKey("fb") && parameters.get("fb").toLowerCase().equals("true")) {
-            try {
-                checkQueryExpansionParameters(parameters);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
+
         return parameters;
     }
 
@@ -521,8 +654,8 @@ public class QryEval {
             BufferedReader in = new BufferedReader(new FileReader(fbInitialRankingFile));
             String input;
             while ((input = in.readLine()) != null) {
-                String[] inputLine = input.split("\t");//For local test
-                //String[] inputLine = input.split(" ");//For Homework testing
+                //String[] inputLine = input.split("\t");//For local test
+                String[] inputLine = input.split(" ");//For Homework testing
                 if (inputLine.length != 6) {
                     throw new Exception("Incomplete initial ranking file!");
                 }

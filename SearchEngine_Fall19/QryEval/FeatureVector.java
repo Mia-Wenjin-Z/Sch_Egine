@@ -101,10 +101,17 @@ public class FeatureVector {
         }
     }
 
-    public void writeTestingFeatureVector() {
+    public Map<Integer, List<String>> writeTestingFeatureVector() {
+
+        // docSequence is used to record the sequence of qid, documents being written to file.
+        // this will be used to map <doc , SVM prediction scores> for final output
+        Map<Integer, List<String>> docSequence = new TreeMap<>();//(qid, <internal doc ids>)
+
         List<Map.Entry<Integer, String>> queryList = getQueryList(model.queryFilePath);
+
         //No relevance map. all relevance score set to zero for testing data
         Map<String, Map<Integer, Double>> featureVectorMap = new HashMap<>();
+
         //run a while loop for each q here
         BufferedWriter output = null;
         try {
@@ -134,10 +141,12 @@ public class FeatureVector {
                     //Update to feature vector Map
                     featureVectorMap.putIfAbsent(externalDocId, featureVector);
                 }
+
                 //normalization
                 normalizeVector(featureVectorMap);
+
                 //write result to file - write on a per query basis
-                writeTrainingFeatureVectorToFiles(qid, featureVectorMap, output);
+                writeTestingFeatureVectorToFiles(qid, featureVectorMap, output, docSequence);
                 initializeScoreOfFeatures();//todo to-check reset norm score
             }
         } catch (IOException e) {
@@ -153,6 +162,7 @@ public class FeatureVector {
                 }
             }
         }
+        return docSequence;
     }
 
 
@@ -401,9 +411,10 @@ public class FeatureVector {
      * @param output
      * @throws IOException
      */
-    private void writeTrainingFeatureVectorToFiles(int qid, Map<Integer, Map<String, Integer>> relevanceMap,
-                                                   Map<String, Map<Integer, Double>> featureVectorMap,
+    private void writeTrainingFeatureVectorToFiles(int qid, Map<Integer,
+            Map<String, Integer>> relevanceMap, Map<String, Map<Integer, Double>> featureVectorMap,
                                                    BufferedWriter output) throws IOException {
+
 
         StringBuilder outputLine = new StringBuilder();
         Map<String, Integer> docIdToRelScoreMap = relevanceMap.get(qid);
@@ -411,6 +422,7 @@ public class FeatureVector {
         for (Map.Entry<String, Map<Integer, Double>> entry : featureVectorMap.entrySet()) {
 
             String externalDocId = entry.getKey();
+
             int relevanceScore = docIdToRelScoreMap.containsKey(externalDocId) ?
                     docIdToRelScoreMap.get(externalDocId) : 0;
             outputLine.append(String.format("%d\tqid:%d", relevanceScore, qid));//2 qid:1
@@ -438,15 +450,18 @@ public class FeatureVector {
      * @param output
      * @throws IOException
      */
-    private void writeTrainingFeatureVectorToFiles(int qid,
+    private void writeTestingFeatureVectorToFiles(int qid,
                                                    Map<String, Map<Integer, Double>> featureVectorMap,
-                                                   BufferedWriter output) throws IOException {
+                                                   BufferedWriter output, Map<Integer, List<String>> docSequence) throws IOException {
 
         StringBuilder outputLine = new StringBuilder();
+        List<String> externalDocIdList = new ArrayList<>();
 
         for (Map.Entry<String, Map<Integer, Double>> entry : featureVectorMap.entrySet()) {
 
             String externalDocId = entry.getKey();
+            externalDocIdList.add(externalDocId);
+
             int relevanceScore = 0;
             outputLine.append(String.format("%d\tqid:%d", relevanceScore, qid));//0 qid:1
 
@@ -459,6 +474,8 @@ public class FeatureVector {
             outputLine.append(String.format("\t#\t%s\n", externalDocId));//# clueweb09-en0000-48-24794
             output.write(outputLine.toString());
         }
+        docSequence.put(qid, externalDocIdList);
+
     }
 
 

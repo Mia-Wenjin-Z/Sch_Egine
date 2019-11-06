@@ -465,30 +465,6 @@ public class FeatureVector {
 //            System.out.println(outputLine.toString());//todo todelete
             outputLine.setLength(0);//ATTENTION !!!
         }
-//        for (Map.Entry<String, Map<Integer, Double>> entry : featureVectorMap.entrySet()) {
-//
-//            String externalDocId = entry.getKey();
-//            if( !docIdToRelScoreMap.containsKey(externalDocId)){
-//                continue;
-//            }
-//            int relevanceScore = docIdToRelScoreMap.containsKey(externalDocId) ?
-//                    docIdToRelScoreMap.get(externalDocId) : 0;
-//            outputLine.append(String.format("%d qid:%d", relevanceScore, qid));//2 qid:1
-//
-//            Map<Integer, Double> featureVector = entry.getValue();
-//            for (int i = 1; i < FEATURE_NUM; i++) {//1:1 2:1 3:0 4:0.2 5:0
-//
-//                double score = featureVector.get(i);
-//                outputLine.append(String.format(" %d:%.14f", i, score));
-//            }
-//            outputLine.append(String.format(" # %s\n", externalDocId));//# clueweb09-en0000-48-24794
-//            output.write(outputLine.toString());
-//            count++;
-//            System.out.println("COUNT: " + count);
-//            System.out.println(outputLine.toString());//todo todelete
-//            outputLine.setLength(0);//ATTENTION !!!
-//
-//        }
     }
 
     /**

@@ -9,7 +9,7 @@ import java.util.*;
 public class FeatureVector {
 
     private RetrievalModelLetor model;
-    private Set<String> disabledFeatures;
+    private Set<String> disabledFeatures = new HashSet<>();
     private static final int FEATURE_NUM = 19;
     private static final int DOC_NUM = 100;
     private static double[] maxScoreOfFeatures = new double[FEATURE_NUM];
@@ -29,7 +29,6 @@ public class FeatureVector {
 
     private void setDisabledFeature() {
         for (String disabledFeature : model.featureDisable.split(",")) {
-            disabledFeatures = new HashSet<>();
             disabledFeatures.add(disabledFeature);
         }
     }
@@ -37,14 +36,17 @@ public class FeatureVector {
     private void initializeScoreOfFeatures() {
         for (int i = 1; i < FEATURE_NUM; i++) {
             // only use 1 - 18, position 0 is not used
-            this.maxScoreOfFeatures[i] = -Double.MAX_VALUE;
-            this.minScoreOfFeatures[i] = Double.MAX_VALUE;
+            maxScoreOfFeatures[i] = -Double.MAX_VALUE;
+            minScoreOfFeatures[i] = Double.MAX_VALUE;
         }
     }
 
     private void updateMaxandMin(int index, double score) {
-        this.maxScoreOfFeatures[index] = this.maxScoreOfFeatures[index] < score ? score : this.maxScoreOfFeatures[index];
-        this.minScoreOfFeatures[index] = this.minScoreOfFeatures[index] < score ? this.minScoreOfFeatures[index] : score;
+        if (score == Double.MIN_VALUE) {
+            return;
+        }
+        maxScoreOfFeatures[index] = Math.max(maxScoreOfFeatures[index] , score);
+        minScoreOfFeatures[index] = Math.min(minScoreOfFeatures[index] , score);
     }
 
 
@@ -62,6 +64,7 @@ public class FeatureVector {
             output = new BufferedWriter(new FileWriter(model.trainingFeatureVectorsFile));
 
             for (Map.Entry<Integer, String> queryEntry : queryList) {//for each qid
+                initializeScoreOfFeatures();//todo to-check reset norm score
                 Integer qid = queryEntry.getKey();
                 Map<String, Integer> docRelevanceMap = relevanceMap.get(qid);
 
@@ -78,14 +81,16 @@ public class FeatureVector {
                     List<String> terms = tokenize(query);
                     setFeatureVectorScore(docid, terms, featureVector);
                     //Update to feature vector Map
-                    featureVectorMap.putIfAbsent(externalDocId, featureVector);
+                    featureVectorMap.put(externalDocId, featureVector);
                 }
                 //normalization
+                //System.out.println("***Query -> feature vec" + qid); //todo todelete
                 normalizeVector(featureVectorMap);
                 //write result to file - write on a per query basis
                 writeTrainingFeatureVectorToFiles(qid, relevanceMap, featureVectorMap, output);
-                initializeScoreOfFeatures();//todo to-check reset norm score
+                System.out.println("qid: " + qid + "feature vector written");//todo to-delete
             }
+
         } catch (IOException e) {
             e.printStackTrace();
         } catch (Exception e) {
@@ -121,11 +126,12 @@ public class FeatureVector {
                     model.b, model.k3);
 
             for (Map.Entry<Integer, String> queryEntry : queryList) {//for each qid
+                initializeScoreOfFeatures();//todo to-check reset norm score
                 Integer qid = queryEntry.getKey();
                 //User BM25 TO GET relevant top 100 doc
                 String query = queryEntry.getValue();
                 ScoreList result = QryEval.processQuery(query, BM25model);
-                int size = Math.min(result.size(), this.DOC_NUM);
+                int size = Math.min(result.size(), DOC_NUM);
 
                 for (int i = 0; i < size; i++) {//for each doc
                     int docid = result.getDocid(i);
@@ -139,7 +145,7 @@ public class FeatureVector {
                     List<String> terms = tokenize(query);
                     setFeatureVectorScore(docid, terms, featureVector);
                     //Update to feature vector Map
-                    featureVectorMap.putIfAbsent(externalDocId, featureVector);
+                    featureVectorMap.put(externalDocId, featureVector);
                 }
 
                 //normalization
@@ -147,7 +153,7 @@ public class FeatureVector {
 
                 //write result to file - write on a per query basis
                 writeTestingFeatureVectorToFiles(qid, featureVectorMap, output, docSequence);
-                initializeScoreOfFeatures();//todo to-check reset norm score
+                featureVectorMap.clear();//ATTENTION: CLEAR feature vector of this qid AFTER WRITTEN TO FILE
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -204,7 +210,7 @@ public class FeatureVector {
 
         // f4: PageRank score for d (read from index).
         if (!this.disabledFeatures.contains("4")) {
-            double prScore = Double.parseDouble(Idx.getAttribute("PageRank", docid));
+            double prScore = Float.parseFloat(Idx.getAttribute("PageRank", docid));
             featureVector.put(4, prScore);
             updateMaxandMin(4, prScore);
         }
@@ -236,7 +242,7 @@ public class FeatureVector {
         }
 
         // f17: A custom feature - use your imagination.
-        // Combined overlap: 1 - multiplication (1 - overlap[field])
+        // Combined overlap: 1 - multiplication(1 - overlap[field])
         if (!this.disabledFeatures.contains("17")) {
             QrySopScore sop = new QrySopScore();
             double overlapBody = 1 - sop.getTermOverlapPct(docid, "body", terms);
@@ -251,8 +257,26 @@ public class FeatureVector {
         // f18: A custom feature - use your imagination.
         // values more centalized Indri Score across different fields
         if (!this.disabledFeatures.contains("18")) {
-            double[] IndriScore = new double[]{featureVector.get(7), featureVector.get(10),
-                    featureVector.get(13), featureVector.get(16)};
+            QrySopScore sop = new QrySopScore();
+            Map<Integer, Double> indriScoreMap = new HashMap<>();
+
+            for (int i = 0; i < fields.length; i++) {
+
+                // f6,9,12,15: Indri score using fields
+                double indriScore;
+                if (!featureVector.containsKey(6 + 3 * i)) {
+
+                    String field = fields[i];
+                    indriScore = sop.getScoreIndri(docid, field, terms, model);
+
+                } else {
+                    indriScore = featureVector.get(6 + 3 * i);
+                }
+                indriScoreMap.put(6 + 3 * i, indriScore);
+            }
+
+            double[] IndriScore = new double[]{indriScoreMap.get(6), indriScoreMap.get(9),
+                    indriScoreMap.get(12), indriScoreMap.get(15)};
             double centerity = 1 - calculateSD(IndriScore);
             featureVector.put(18, centerity);
             updateMaxandMin(18, centerity);
@@ -260,7 +284,7 @@ public class FeatureVector {
 
     }
 
-    private static double calculateSD(double numArray[]) {
+    private static double calculateSD(double[] numArray) {
         double sum = 0.0, standardDeviation = 0.0;
         int length = numArray.length;
         for (double num : numArray) {
@@ -342,7 +366,7 @@ public class FeatureVector {
      * @throws IOException
      */
     private List<String> tokenize(String query) throws IOException {
-        List<String> terms = new ArrayList<String>();
+        List<String> terms = new ArrayList<>();
         String[] rawQueryTerms = query.split("\\s+");
         for (String rawQueryTerm : rawQueryTerms) {
             String[] tokens = QryParser.tokenizeString(rawQueryTerm);
@@ -419,23 +443,52 @@ public class FeatureVector {
         StringBuilder outputLine = new StringBuilder();
         Map<String, Integer> docIdToRelScoreMap = relevanceMap.get(qid);
 
-        for (Map.Entry<String, Map<Integer, Double>> entry : featureVectorMap.entrySet()) {
+//        int count = 0;//todo todelete
+
+        for (Map.Entry<String, Integer> entry : docIdToRelScoreMap.entrySet()) {
+
+            int relevanceScore = entry.getValue();
+            outputLine.append(String.format("%d qid:%d", relevanceScore, qid));//2 qid:1
 
             String externalDocId = entry.getKey();
-
-            int relevanceScore = docIdToRelScoreMap.containsKey(externalDocId) ?
-                    docIdToRelScoreMap.get(externalDocId) : 0;
-            outputLine.append(String.format("%d\tqid:%d", relevanceScore, qid));//2 qid:1
-
             Map<Integer, Double> featureVector = featureVectorMap.get(externalDocId);
+
             for (int i = 1; i < FEATURE_NUM; i++) {//1:1 2:1 3:0 4:0.2 5:0
 
                 double score = featureVector.get(i);
-                outputLine.append(String.format("\t%d:%.14f", i, score));
+                outputLine.append(String.format(" %d:%.14f", i, score));
             }
-            outputLine.append(String.format("\t#\t%s\n", externalDocId));//# clueweb09-en0000-48-24794
+            outputLine.append(String.format(" # %s\n", externalDocId));//# clueweb09-en0000-48-24794
             output.write(outputLine.toString());
+//            count++;
+//            System.out.println("COUNT: " + count);
+//            System.out.println(outputLine.toString());//todo todelete
+            outputLine.setLength(0);//ATTENTION !!!
         }
+//        for (Map.Entry<String, Map<Integer, Double>> entry : featureVectorMap.entrySet()) {
+//
+//            String externalDocId = entry.getKey();
+//            if( !docIdToRelScoreMap.containsKey(externalDocId)){
+//                continue;
+//            }
+//            int relevanceScore = docIdToRelScoreMap.containsKey(externalDocId) ?
+//                    docIdToRelScoreMap.get(externalDocId) : 0;
+//            outputLine.append(String.format("%d qid:%d", relevanceScore, qid));//2 qid:1
+//
+//            Map<Integer, Double> featureVector = entry.getValue();
+//            for (int i = 1; i < FEATURE_NUM; i++) {//1:1 2:1 3:0 4:0.2 5:0
+//
+//                double score = featureVector.get(i);
+//                outputLine.append(String.format(" %d:%.14f", i, score));
+//            }
+//            outputLine.append(String.format(" # %s\n", externalDocId));//# clueweb09-en0000-48-24794
+//            output.write(outputLine.toString());
+//            count++;
+//            System.out.println("COUNT: " + count);
+//            System.out.println(outputLine.toString());//todo todelete
+//            outputLine.setLength(0);//ATTENTION !!!
+//
+//        }
     }
 
     /**
@@ -451,28 +504,36 @@ public class FeatureVector {
      * @throws IOException
      */
     private void writeTestingFeatureVectorToFiles(int qid,
-                                                   Map<String, Map<Integer, Double>> featureVectorMap,
-                                                   BufferedWriter output, Map<Integer, List<String>> docSequence) throws IOException {
+                                                  Map<String, Map<Integer, Double>> featureVectorMap,
+                                                  BufferedWriter output, Map<Integer, List<String>> docSequence) throws IOException {
 
         StringBuilder outputLine = new StringBuilder();
         List<String> externalDocIdList = new ArrayList<>();
 
+//        int count = 0;//todo todelete
         for (Map.Entry<String, Map<Integer, Double>> entry : featureVectorMap.entrySet()) {
+
+
+
+            int relevanceScore = 0;
+            outputLine.append(String.format("%d qid:%d", relevanceScore, qid));//0 qid:1
 
             String externalDocId = entry.getKey();
             externalDocIdList.add(externalDocId);
-
-            int relevanceScore = 0;
-            outputLine.append(String.format("%d\tqid:%d", relevanceScore, qid));//0 qid:1
-
             Map<Integer, Double> featureVector = featureVectorMap.get(externalDocId);
+
             for (int i = 1; i < FEATURE_NUM; i++) {//1:1 2:1 3:0 4:0.2 5:0
 
                 double score = featureVector.get(i);
-                outputLine.append(String.format("\t%d:%.14f", i, score));
+                outputLine.append(String.format(" %d:%.14f", i, score));
             }
-            outputLine.append(String.format("\t#\t%s\n", externalDocId));//# clueweb09-en0000-48-24794
+            outputLine.append(String.format(" # %s\n", externalDocId));//# clueweb09-en0000-48-24794
             output.write(outputLine.toString());
+
+//            count++;
+//            System.out.println("COUNT: " + count);
+//            System.out.println(outputLine.toString());//todo todelete
+            outputLine.setLength(0);//ATTENTION !!!
         }
         docSequence.put(qid, externalDocIdList);
 
@@ -487,15 +548,20 @@ public class FeatureVector {
      * @param featureVectorMap
      */
     private void normalizeVector(Map<String, Map<Integer, Double>> featureVectorMap) {
-
+//        System.out.println(Arrays.toString(maxScoreOfFeatures)); //todo todelete
+//        System.out.println(Arrays.toString(minScoreOfFeatures));
         for (Map<Integer, Double> featureVector : featureVectorMap.values()) {
             for (int i = 1; i < FEATURE_NUM; i++) {
-                double max = this.maxScoreOfFeatures[i];
-                double min = this.minScoreOfFeatures[i];
-                double score = featureVector.containsKey(i) ? featureVector.get(i) : Double.MIN_VALUE;
-                if (score != Double.MIN_VALUE) {
+                double max = maxScoreOfFeatures[i];
+                double min = minScoreOfFeatures[i];
+                double score = featureVector.containsKey(i) ? featureVector.get(i) : 0;
+
+                if (score == Double.MIN_VALUE) {
+                    score = 0;
+                } else {
                     score = (max == min) ? 0 : (score - min) / (max - min);
                 }
+
                 featureVector.put(i, score);
                 //todo to check if valid: changing while iterating
             }

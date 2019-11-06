@@ -169,7 +169,7 @@ public class QrySopScore extends QrySop {
         double score = 0;
 
         TermVector termVector = new TermVector(doc_id, field);
-        //Term vector for this field does not exist, set BM25 score to 0.0 (consistent with HW2 implementation)
+        //Term vector for this field does not exist, setting the feature to zero after normalization.
         if (termVector.positionsLength() == 0 || termVector.stemsLength() == 0) {
             return Double.MIN_VALUE;
         }
@@ -188,8 +188,8 @@ public class QrySopScore extends QrySop {
 
 
             // tf weight
-            double k1 = ((RetrievalModelLetor) r).k1;
-            double b = ((RetrievalModelLetor) r).b;
+            double k1 = r.k1;
+            double b = r.b;
             int tf = termVector.stemFreq(index);
             long docLength = Idx.getFieldLength(field, doc_id);
             double avgDocLen = Idx.getSumOfFieldLengths(field) / (double) Idx.getDocCount(field);
@@ -197,7 +197,7 @@ public class QrySopScore extends QrySop {
 
 
             //user weight
-            double k3 = ((RetrievalModelLetor) r).k3;
+            double k3 = r.k3;
             //In this system -> Your BM25 queries will always have qtf=1
             int qtf = 1;
             double userWeight = (k3 + 1) * qtf / (k3 + qtf);
@@ -233,10 +233,11 @@ public class QrySopScore extends QrySop {
 
         double score = 1;
         long docLength = Idx.getFieldLength(field, doc_id);
+
         long collectionLength = Idx.getSumOfFieldLengths(field);
         TermVector termVector = new TermVector(doc_id, field);
 
-        //Term vector for this field does not exist, set Indri score to 0.0 (consistent with HW2 implementation)
+        //Term vector for this field does not exist,  setting the feature to zero after normalization.
         if (termVector.positionsLength() == 0 || termVector.stemsLength() == 0) {
             return Double.MIN_VALUE;
         }
@@ -245,8 +246,11 @@ public class QrySopScore extends QrySop {
 
         for (String term : terms) {
             int index = termVector.indexOfStem(term);
-            double tf = index == -1 ? 0 : termVector.stemFreq(index);
-            match = (index != -1);
+            double tf = (index == -1) ? 0 : termVector.stemFreq(index);
+
+            if (!match) {
+                match = (index != -1);
+            }
 
             double lambda = r.lambda;
             double mu = r.mu;
@@ -259,7 +263,7 @@ public class QrySopScore extends QrySop {
         // if a field does not match any term of a query, the score for the field is 0.
         // Documents that have no terms in common with the query were not given a score.
         if (!match) {
-            return Double.MIN_VALUE;
+            return 0;
         }
 
         score = Math.pow(score, 1.0 / terms.size());
@@ -329,17 +333,16 @@ public class QrySopScore extends QrySop {
             return Double.MIN_VALUE;
         }
         TermVector termVector = new TermVector(doc_id, field);
-        //Term vector for this field does not exist, set Indri score to 0.0 (consistent with HW2 implementation)
+        //Term vector for this field does not exist
         if (termVector.positionsLength() == 0 || termVector.stemsLength() == 0) {
             return Double.MIN_VALUE;
         }
         int commonTermCount = 0;
         for (String term : terms) {
             int index = termVector.indexOfStem(term);
-            if (index == -1) {
-                continue;
+            if (index != -1) {
+                commonTermCount++;
             }
-            commonTermCount++;
         }
         return commonTermCount / (1.0 * terms.size());
     }

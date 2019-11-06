@@ -57,16 +57,24 @@ public class QryEval {
         RetrievalModel model = initializeRetrievalModel(parameters);
 
         if (model instanceof RetrievalModelLetor) {
-            //TODO Learning to rank
+
             //Get & write feature vectors of training data
             FeatureVector featureVector = new FeatureVector((RetrievalModelLetor) model);
             featureVector.writeTrainingFeatureVector();
+            System.out.println("training feature vector written.");
+
             //todo Learning: Train SVM using training data
             trainSVM((RetrievalModelLetor) model);
+            System.out.println("SVM model trained.");
+
             //Get & write feature vectors of testing data
             Map<Integer, List<String>> docSequence = featureVector.writeTestingFeatureVector();
+            System.out.println("testing feature vector written.");
+
             //Re-rank: Apply SVM on testing data's feature vectors
             applySVM((RetrievalModelLetor) model);
+            System.out.println("SVM model applied");
+
             //Write re-rank results to TrecEvalOutput -> write a static method for this
             writeLetorScore((RetrievalModelLetor) model, docSequence, parameters);
         } else {
@@ -116,10 +124,12 @@ public class QryEval {
                         result.add(Idx.getInternalDocid(externalDocIds.get(i)), SVMScoreQueue.pollFirst());
                     }
                 }
+
+                result.sort();
                 if (result != null) {
 
                     StringBuilder outputStr = formatResults(String.valueOf(qid), result, parameters);
-                    printResults("Learning to rank", outputStr);
+                    //printResults("Learning to rank", outputStr);
                     output.write(outputStr.toString());
                 }
             }

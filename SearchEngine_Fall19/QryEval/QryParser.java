@@ -352,7 +352,9 @@ public class QryParser {
                 qargs[0] = parseString(p.getPopped());
             } else if ((queryTree instanceof QrySopW) &&
                     Character.isDigit(queryString.charAt(0)) &&
-                    !Character.isDigit(queryString.charAt(1))) {
+                    (queryString.length() > 1 && queryString.charAt(1)=='.')
+
+            ) {
                 //todo to deal with "0.0019 250" example. But this method only allows weight < 1(0.xxx) or integer MUST CHANGE
 
                 p = popTerm(queryString);

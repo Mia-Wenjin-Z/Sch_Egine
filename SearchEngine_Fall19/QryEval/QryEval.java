@@ -63,7 +63,7 @@ public class QryEval {
             featureVector.writeTrainingFeatureVector();
             System.out.println("training feature vector written.");
 
-            //todo Learning: Train SVM using training data
+            //Learning: Train SVM using training data
             trainSVM((RetrievalModelLetor) model);
             System.out.println("SVM model trained.");
 
@@ -377,7 +377,7 @@ public class QryEval {
             }
             //  Each pass of the loop processes one query.
 
-            //to-delete
+            //to-delete: calculate avg memory
             List<Double> totalMem = new ArrayList<>();
             totalMem.add(0, 0.0);
             int loopTime = 0;
@@ -397,16 +397,13 @@ public class QryEval {
                 String query = pair[1];
                 ScoreList initialResults;
 
+                //todo judge if needed diversification
                 if (!needExpansion(parameters)) {
 
                     initialResults = processQuery(query, model);
                     StringBuilder outputStr = formatResults(qid, initialResults, parameters);
                     output.write(outputStr.toString());
 
-//                    if (initialResults != null) {
-//                        printResults(qid, outputStr);
-//                        System.out.println();
-//                    }
 
                 } else {// Perform query expansion
 
@@ -427,16 +424,16 @@ public class QryEval {
                     queryExpansionOutput.write(String.format("%s: %s\n", qid, expandedQuery));
                     double fbOrigWeight = Double.parseDouble(parameters.get("fbOrigWeight"));
 
-                    //TODO Wrap query
+                    //Wrap query
                     String defaultOp = model.defaultQrySopName();
                     query = defaultOp + "(" + query + ")";
                     String combinedQuery = getCombinedQuery(query, expandedQuery, fbOrigWeight);
-                    System.out.println("****Combined Query: " + combinedQuery);//todo delete
+                    System.out.println("****Combined Query: " + combinedQuery);
 
                     //Use the combined query to retrieve documents;
                     ScoreList results = processQuery(combinedQuery, model);
                     StringBuilder outputStr = formatResults(qid, results, parameters);
-                    //System.out.println(outputStr);//todo todelete
+                    //System.out.println(outputStr);
                     output.write(outputStr.toString());
                 }
             }
